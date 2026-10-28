@@ -43,6 +43,7 @@ class TeamMember(BaseModel):
     email: str | None = None
     aliases: list[str] = []  # other spellings documents use, e.g. a first name
     approves: list[dict[str, str]] = []  # frontmatter globs, e.g. {type: Risk}; any rule matches
+    github: str | None = None  # GitHub login: reminders @mention it, its issue comments decide as this person
 
 
 class Manifest(BaseModel):

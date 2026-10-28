@@ -13,6 +13,14 @@ class GitError(Exception):
     pass
 
 
+class Stale(GitError):
+    """These paths changed elsewhere since this clone last saw them."""
+
+    def __init__(self, paths: list[str], message: str | None = None):
+        super().__init__(message or f"changed on the remote meanwhile: {', '.join(paths)}")
+        self.paths = paths
+
+
 def git(root: Path, *args: str, check: bool = True) -> str:
     proc = subprocess.run(["git", *args], cwd=root, capture_output=True, text=True)
     if check and proc.returncode != 0:
@@ -64,11 +72,11 @@ def rollback(root: Path, baseline_untracked: set[str]) -> None:
             (root / p).unlink(missing_ok=True)
 
 
-def commit(root: Path, message: str, paths: list[str]) -> str:
+def commit(root: Path, message: str, paths: list[str], author: str | None = None) -> str:
     """Commit exactly these paths; anything else the user has staged stays untouched."""
     existing = [p for p in paths if (root / p).exists() or git(root, "ls-files", "--", p).strip()]
     git(root, "add", "-A", "--", *existing)
-    git(root, "commit", "-q", "-m", message, "--", *existing)
+    git(root, "commit", "-q", "-m", message, *([f"--author={author}"] if author else []), "--", *existing)
     return head(root) or ""
 
 
@@ -76,13 +84,40 @@ def has_upstream(root: Path) -> bool:
     return bool(git(root, "rev-parse", "--abbrev-ref", "@{u}", check=False).strip())
 
 
-def pull(root: Path) -> None:
+def _moved(root: Path, revs: str, paths: list[str] | None = None) -> list[str]:
+    """Files changed in `revs`, optionally limited to `paths` (an empty list means none)."""
+    if paths == []:
+        return []
+    return git(root, "diff", "--name-only", "-z", revs, "--", *(paths or [])).split("\0")[:-1]
+
+
+def pull(root: Path, guard: list[str] | None = None) -> None:
+    """Fast-forward to the remote. Raises Stale afterwards if that changed any `guard` path."""
     if has_upstream(root):
+        before = head(root)
         git(root, "pull", "--ff-only", "-q")
+        if before and guard and (moved := _moved(root, f"{before}..HEAD", guard)):
+            raise Stale(moved)
 
 
-def push(root: Path) -> None:
-    git(root, "push", "-q")  # never --force
+def push(root: Path, tries: int = 3) -> None:
+    """Push, never forcing. If the remote moved on, rebase onto it and try again, but only when the two
+    sides changed different files. Same file on both sides raises Stale: a textual merge could join an
+    approval with content nobody approved, so the caller undoes its run instead."""
+    for _ in range(tries):
+        proc = subprocess.run(["git", "push", "-q"], cwd=root, capture_output=True, text=True)
+        if proc.returncode == 0:
+            return
+        git(root, "fetch", "-q", check=False)
+        if not git(root, "rev-list", "HEAD..@{u}", check=False).strip():  # not a race: auth, no upstream, …
+            raise GitError(f"git push failed: {proc.stderr.strip()}")
+        if both := sorted(set(_moved(root, "HEAD...@{u}")) & set(_moved(root, "@{u}...HEAD"))):
+            raise Stale(both)
+        if subprocess.run(["git", "rebase", "-q", "--autostash", "@{u}"], cwd=root, capture_output=True).returncode:
+            git(root, "rebase", "--abort", check=False)
+            raise GitError("rebasing onto the remote failed; your commits stay local. Run `git pull --rebase`, "
+                           "resolve, then push.")
+    raise GitError(f"push rejected {tries} times in a row; try again")
 
 
 def show(root: Path, rev: str, path: str) -> str | None:

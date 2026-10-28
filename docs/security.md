@@ -23,6 +23,13 @@ BrainForge processes confidential documents with LLM agents. This document descr
 - After a report, BrainForge rejects it if it cites any concept outside that set.
 - **Residual risk:** the copy is a separate folder, not a sandbox. The agent isn't told where the brain is, but file tools could read outside the copy if it went looking. The citation check catches cited leaks, not paraphrased ones. An audience is only as good as the approver's choice.
 
+## Decisions by people, on what they saw
+
+- `approve` and `discard` pull first and stop if the pull changed a named item. A pinned version (`item@3f2a1c9`) must still be the item's latest commit.
+- Pushes never merge a decision into content the person didn't see. When both sides changed the same file, BrainForge undoes its own commits instead of merging.
+- **Issue comments** decide only when the commenter has write access (`author_association` OWNER, MEMBER or COLLABORATOR) *and* is listed with that `github` login in `brain.yaml`. The comment reaches BrainForge as an environment variable, never as part of the script, and is parsed for `approve`/`discard` lines only.
+- **Residual risk:** anyone who can push to the repository can also edit `brain.yaml` or the knowledge directly; approvals record who decided, they don't replace repository permissions. Each team member may decide on any item, not only their own: the routing tells people what to look at, it isn't access control.
+
 ## Data leaves your machine only through the agent you chose
 
 - BrainForge sends document content only to the configured agent CLI.

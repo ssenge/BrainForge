@@ -85,7 +85,7 @@ brainforge run weekly-report
 ```
 
 - The document text goes only to your AI provider, through your agent CLI. Everything else stays on your machine.
-- Nothing is pushed unless you ask for it. Run `git push` yourself, or add `--push` to `ingest` or `run`, which pulls before and pushes after and never forces.
+- Nothing is pushed unless you ask for it. Run `git push` yourself, add `--push` to `ingest`, `run`, `approve` or `discard`, or set `git: push: true` in `brain.yaml`. A push pulls first and never forces. If the remote moved on meanwhile, it rebases when the two sides changed different files. If both changed the same file, BrainForge undoes its own run and asks you to run it again: the run is idempotent, and a blind merge could join an approval with content nobody approved.
 - To run procedures on a schedule locally, use `brainforge schedule install --provider cron`.
 
 `init` creates:
@@ -111,7 +111,7 @@ One-time setup. You need the [GitHub CLI](https://cli.github.com) (`gh`):
 brainforge init client-a-project-1 --id client-a/project-1 && cd client-a-project-1
 gh repo create client-a-project-1 --private --source . --push
 
-# Two workflows: inbox ingestion, and procedures (on demand or scheduled)
+# Workflows: inbox ingestion, approvals (when team members have a `github` login), procedures
 PKG="brainforge @ git+https://github.com/ssenge/BrainForge.git"
 brainforge ci install --package "$PKG"
 brainforge schedule install --provider github-actions --package "$PKG"
@@ -137,7 +137,7 @@ What happens:
 - Each new document gets its own commit, `ingest: steerco.pdf`, with the `BrainForge-Run`, `-Source` and `-Agent` trailers. The originals move to `archive/<hash>/`.
 - The bot's own pushes don't start new runs.
 - A document that was already ingested, under any name, is removed from the inbox without another agent run.
-- If a run fails, nothing is committed and the document stays in `inbox/`. Fix the cause, then run `gh run rerun --failed`.
+- If a run fails, nothing is committed and the document stays in `inbox/`. Fix the cause, then run `gh run rerun --failed`. The same applies when someone pushed a change to the same knowledge while the run was busy.
 
 Reports:
 - **On demand:** `gh workflow run brainforge-procedures.yml -f procedure=weekly-report`.
@@ -345,6 +345,8 @@ needs_approval: [{type: Decision}, {type: Action Item}, {type: Risk}, {type: Mil
    brainforge discard risks/data-migration-delay --push
    ```
    In Claude Code, just ask *"show my pending brain items"*. The BrainForge skill lists them as a short table with links that open each item in Obsidian, and asks Approve, Approve for client, Discard or Not now, four items at a time.
+
+   Without a local setup, people decide in a GitHub issue (see below).
 3. Before Tuesday's status meeting, the scanner shows who still has to act:
    ```text
    $ brainforge pending --team
@@ -362,6 +364,17 @@ needs_approval: [{type: Decision}, {type: Action Item}, {type: Risk}, {type: Mil
 - **Not now** leaves it pending.
 
 Decisions are small commits, so people deciding in parallel don't conflict, and `git log` shows who decided what.
+
+**Nobody approves what they haven't seen.** `approve` and `discard` pull first. If the pull changed an item you named, nothing is decided and you look again. `pending --json` gives each item's `version`, the commit that last changed it; `approve milestones/go-live@3f2a1c9` stops if the item changed after that version. The same check runs when a push has to catch up with someone else's.
+
+**Approving from GitHub.** Add each person's GitHub login to the team (`github: alice-s`), then run `brainforge ci install`. It adds a `brainforge-approvals` workflow:
+- On a schedule (`--remind`, a UTC cron, weekdays 07:00 by default), it posts to an issue labelled `brainforge-approvals`. The post @mentions everyone with pending items and lists each item with a link to the exact version and a ready-to-copy command:
+  ```text
+  @bob-lee
+  - [Update test plan](…/blob/3f2a1c9/knowledge/actions/update-test-plan.md) (new, from Weekly minutes): `approve actions/update-test-plan@3f2a1c9`
+  ```
+- People reply with one command per line: `approve <item>`, `approve <item> --audience client` or `discard <item>`. The workflow applies them as that team member, so the commit author and `verified` name the person. It then replies with the result and what still waits for them.
+- Only comments from people with write access count, and only from logins listed in the team. Nobody else can decide. The comment is passed as data and never runs as a script. No agent is involved, so no secret is needed.
 
 ## Agents and authentication
 
@@ -399,12 +412,13 @@ With `adapter: command`, any program works. It receives the prompt on stdin, run
 | `knowledge query QUESTION` | Agent answer with citations, read-only (`--audience LEVEL`) |
 | `knowledge validate`, `knowledge index` | OKF checks; regenerate `index.md` files |
 | `pending` | Knowledge awaiting your approval (`--team`: who still has to act; `--for NAME`, `--all`, `--check`) |
-| `approve ITEM…`, `discard ITEM…` | Decide (`--audience NAME`, `--push`) |
+| `approve ITEM…`, `discard ITEM…` | Decide; `ITEM@VERSION` stops if it changed since (`--audience NAME`, `--push`) |
 | `procedures list`, `procedures validate` | Procedures with schedule and last run |
 | `run PROCEDURE` | Write a report now (`--allow-pending` skips the approval gate) |
 | `schedule tick` | Run whatever is due (call it from cron or CI) |
 | `schedule install --provider cron\|github-actions` | Install the scheduler |
-| `ci install` | GitHub Actions workflow for inbox ingestion |
+| `ci install` | GitHub Actions workflows for inbox ingestion and, with `github` logins in the team, approvals (`--remind CRON`) |
+| `ci remind`, `ci decide --author LOGIN` | Used by the approvals workflow: the reminder text; apply a comment's decisions |
 | `skills install claude\|codex [--user]` | Agent skill that wraps the CLI |
 | `workspace open` | Open the brain as an Obsidian vault |
 | `mcp [BRAIN_DIR…]` | Serve one or more brains read-only over MCP, for Claude Desktop and other MCP clients |

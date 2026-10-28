@@ -118,3 +118,10 @@ def write_github_ingest(brain: Brain, package: str = "brainforge") -> Path:
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(_workflow("ingest.yml", brain, package), encoding="utf-8")
     return out
+
+
+def write_github_approvals(brain: Brain, package: str = "brainforge", remind: str = "0 7 * * 1-5") -> Path:
+    out = brain.root / ".github" / "workflows" / "brainforge-approvals.yml"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(_workflow("approvals.yml", brain, package, REMIND=remind), encoding="utf-8")
+    return out

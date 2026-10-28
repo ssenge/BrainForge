@@ -29,13 +29,14 @@ Rules:
 
 New and changed knowledge arrives as `approval: pending`. Each person approves their own items; never decide for someone else.
 
-1. `brainforge pending --json`. For a `changed` item, `git diff <since> -- <path>` shows what changed. When the brain has a remote, add `--push` to `approve` and `discard` so the team sees the decisions.
+1. `brainforge pending --json` (it pulls first). For a `changed` item, `git diff <since> -- <path>` shows what changed. Decide with `<id>@<version>` from that output, so nothing changed since you showed it; when the brain has a remote, add `--push` so the team sees the decisions.
 2. Show the batch as one compact table, nothing more: `| # | Item | Gaps | Source |`, where Item is `[<title>](<url>)` (the `url` opens the note in Obsidian) and Gaps names what is missing, such as an owner or a due date.
 3. Ask about up to four items at once with your question tool if you have one, one question per item. Keep each question to one line, e.g. "Go-live date moved to 2027-02-01: approve?", and offer exactly:
-   - **Approve**: `brainforge approve <id>`
-   - **Approve for <audience>**: only if `brain.yaml` defines `audiences`; `brainforge approve <id> --audience <audience>`
-   - **Discard**: `brainforge discard <id>`
+   - **Approve**: `brainforge approve <id>@<version>`
+   - **Approve for <audience>**: only if `brain.yaml` defines `audiences`; `brainforge approve <id>@<version> --audience <audience>`
+   - **Discard**: `brainforge discard <id>@<version>`
    - **Not now**: do nothing; it stays pending
    Offer to approve routine items together ("Approve all 3") when nothing is missing.
 4. A correction typed as a free answer is knowledge too: write it into a short Markdown note outside the brain (who said what, today's date), run `brainforge ingest <note> --instruction "Corrections from <name>"`, then approve the concepts that ingestion changed, since they come from the approver.
-5. End with one line per decision, nothing else.
+5. If a decision fails with "changed since you looked", show the item again; never retry without the user seeing the new version.
+6. End with one line per decision, nothing else.

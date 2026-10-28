@@ -40,7 +40,7 @@ Run all three checks before you commit. They are all clean on `main`.
 ## Invariants: don't break these
 
 - **Git is the undo.** The agent edits the brain in place. On failure BrainForge restores the tree with git (`gitops.rollback`). No sandboxes, staging copies or recovery files.
-- **One commit per document or report**, with `BrainForge-*` trailers. Commit only the paths the run touched. Never force-push.
+- **One commit per document or report**, with `BrainForge-*` trailers. Commit only the paths the run touched. Never force-push. A rejected push rebases only when both sides changed different files; otherwise the run undoes its commits (`gitops.Stale`), so a merge never joins an approval with content nobody saw.
 - **Idempotency** comes from the SHA-256 of the document bytes. The ledger is the set of committed source concepts (`knowledge/sources/*.md`, `brainforge.sha256`). No other state store.
 - **Deterministic code checks every agent run.** After a run, `git status` must show changes only in `knowledge/` (for reports, only the report file), no deletions, valid OKF, every changed concept citing the new source, and old provenance kept. Keep LLM behavior out of the deterministic modules.
 - **People approve, not agents.** After every agent run BrainForge sets `approval: pending` and restores `audience`; the agent's values never survive. Audience-restricted reports and queries run on `approval.view`, a copy holding only what that audience may see.

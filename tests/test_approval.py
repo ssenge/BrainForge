@@ -1,11 +1,13 @@
 """Approval status, approver routing, the pending scanner, and audience-restricted reports."""
 
+import io
 import json
+import re
 
 import pytest
 from conftest import write
 
-from brainforge import agents, approval, gitops, ingest, okf, procedures, query
+from brainforge import agents, approval, cli, gitops, ingest, okf, procedures, query
 from brainforge import brain as brain_mod
 
 TEAM = """
@@ -138,3 +140,80 @@ def test_unknown_audience_is_a_validation_error(team):
     write(team.root / "procedures/odd.md", "---\naudience: board\n---\nx\n")
     _, issues = procedures.load_all(team)
     assert any("audience 'board'" in i.message for i in issues)
+
+
+def share(b, tmp_path):
+    """Give the brain a remote and return a teammate's clone of it."""
+    remote, branch = tmp_path / "remote.git", gitops.git(b.root, "branch", "--show-current").strip()
+    gitops.git(tmp_path, "init", "-q", "--bare", "-b", branch, str(remote))
+    gitops.git(b.root, "remote", "add", "origin", str(remote))
+    gitops.git(b.root, "push", "-q", "-u", "origin", "HEAD")
+    gitops.git(tmp_path, "clone", "-q", str(remote), "teammate")
+    return tmp_path / "teammate"
+
+
+def test_decisions_pull_push_and_stop_on_unseen_changes(team, tmp_path, run_cli):
+    add(team, tmp_path, "Topic: Quantum\nMilestone: Go-live = 2026-11-10\n")
+    mate = share(team, tmp_path)
+    gitops.git(mate, "config", "user.name", "Carol Lead")
+    version = json.loads(run_cli("--brain", team.root, "--json", "pending", "--all")[1])[1]["version"]
+
+    # Alice decides offline, Carol pushes first; Alice's push rebases onto it, since they touched different files.
+    assert run_cli("--brain", team.root, "approve", f"milestones/go-live@{version}")[0] == 0
+    assert run_cli("--brain", mate, "approve", "topics/quantum", "--push")[0] == 0
+    cli.publish(team, None)
+    gitops.pull(mate)
+    assert meta(brain_mod.load(mate), "milestones/go-live")["approval"] == "approved"
+    assert meta(team, "topics/quantum")["approval"] == "approved"
+
+    # The teammate's clone changes the item; Alice decides on the version she saw and is stopped.
+    seen = approval.version(team.root, "knowledge/milestones/go-live.md")
+    add(brain_mod.load(mate), tmp_path, "Milestone: Go-live = 2027-02-01\n", "moved.md")
+    gitops.push(mate)
+    code, _, err = run_cli("--brain", team.root, "approve", f"milestones/go-live@{seen[:7]}", "--push")
+    assert code == 1 and "milestones/go-live changed since you looked, so nothing was decided" in err
+    assert meta(team, "milestones/go-live")["approval"] == "pending" and gitops.status(team.root) == []
+
+    # Same file changed on both sides between pull and push: the decision is undone, not merged.
+    assert run_cli("--brain", mate, "approve", "milestones/go-live", "--push")[0] == 0
+    start = gitops.head(team.root)
+    approval.discard(team, ["milestones/go-live"])
+    gitops.commit(team.root, "discard", ["knowledge"])
+    with pytest.raises(gitops.Stale, match="undone"):
+        cli.publish(team, start)
+    assert meta(team, "milestones/go-live")["approval"] == "approved" and gitops.status(team.root) == []
+
+
+def test_github_comment_route(team, tmp_path, run_cli, monkeypatch):
+    manifest = team.root / "brain.yaml"
+    manifest.write_text(manifest.read_text().replace("aliases: [Ali]", "aliases: [Ali]\n    github: alice-gh")
+                        .replace("name: Bob Lee", "name: Bob Lee\n    github: bob-gh"))
+    gitops.commit(team.root, "github logins", ["brain.yaml"])
+    add(team, tmp_path, "Topic: Quantum\nMilestone: Go-live = 2026-11-10\n")
+    share(team, tmp_path)
+    monkeypatch.setenv("GITHUB_REPOSITORY", "acme/brain")
+
+    code, out, _ = run_cli("--brain", team.root, "ci", "remind")
+    assert code == 0 and out.startswith("**2 item(s) await approval.**")
+    assert "@bob-gh\n- [Go-live](https://github.com/acme/brain/blob/" in out and "Carol Lead (no `github` login" in out
+    command = re.search(r"`(approve milestones/go-live@\w+)`", out).group(1)
+
+    def comment(author, text):
+        monkeypatch.setattr("sys.stdin", io.StringIO(text))
+        return run_cli("--brain", team.root, "ci", "decide", "--author", author)
+
+    code, out, _ = comment("Bob-GH", f"Looks right.\n{command}\n> approve topics/quantum\n")
+    assert code == 0 and "- approved milestones/go-live (" in out and out.endswith("Nothing else waits for you.\n")
+    remote = tmp_path / "remote.git"
+    assert gitops.git(remote, "log", "-1", "--format=%an|%s").strip() == "Bob Lee|approve: milestones/go-live"
+    assert meta(team, "milestones/go-live")["verified"][-1]["by"] == "human:bob-gh@users.noreply.github.com"
+    assert meta(team, "topics/quantum")["approval"] == "pending"  # quoted lines don't count
+
+    assert comment("mallory", "approve topics/quantum")[0] == 1
+    code, out, _ = comment("alice-gh", "approve topics/quantum@0000000\ndiscard topics/nothing")
+    assert code == 1 and "topics/quantum changed since you looked" in out and "no such concept: topics/nothing" in out
+    assert comment("alice-gh", "thanks, all good")[1] == "" and gitops.status(team.root) == []
+
+    assert run_cli("--brain", team.root, "ci", "install", "--remind", "0 6 * * 1")[0] == 0
+    workflow = (team.root / ".github/workflows/brainforge-approvals.yml").read_text()
+    assert 'cron: "0 6 * * 1"' in workflow and "brainforge ci decide" in workflow

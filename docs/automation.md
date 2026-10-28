@@ -31,7 +31,15 @@ ingest: steering committee
 Ingest-Note: Focus on new delivery risks
 ```
 
-If a push is rejected because someone else pushed first, the run fails. Re-running it is safe.
+If someone else pushed first, the run rebases onto their commits and pushes, as long as the two changed different files. If both changed the same file (another ingestion, or a decision on knowledge this run also changed), the run undoes its commits and fails. The documents are still in `inbox/`, so re-running it is safe.
+
+## Approvals from GitHub issues
+
+When team members in `brain.yaml` have a `github` login, `brainforge ci install` also writes `.github/workflows/brainforge-approvals.yml`:
+- **Reminder** (`schedule`, `--remind CRON` in UTC, default weekdays 07:00; or manual dispatch): `brainforge ci remind` lists pending items per approver. The text is posted to the open issue labelled `brainforge-approvals` (created on first use), so the @mentioned people get notified. When nothing is pending, nothing is posted.
+- **Decisions** (`issue_comment` in that issue): `brainforge ci decide --author <login>` reads the comment and applies its `approve …` / `discard …` lines as the team member with that login, pushes, and replies with the outcome. Quoted lines (`> …`) are ignored.
+- Same `concurrency` group as ingestion, so decisions and ingestion runs never overlap on GitHub.
+- No agent and no secret: it uses the workflow's own `GITHUB_TOKEN` with `contents: write` and `issues: write`.
 
 ## Scheduled procedures
 
