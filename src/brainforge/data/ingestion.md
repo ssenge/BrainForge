@@ -58,6 +58,7 @@ Integration testing is scheduled for 2026-11-17 (p. 2).[^meeting-2026-10-28]
 
 - **Explicit change:** when the document explicitly supersedes an earlier statement ("moved to", "rescheduled", "replaces"), update `# Current state` and move the earlier statement, with its footnote, into `# History`.
 - **Conflict:** when statements disagree without explicit supersession, keep both under `# Conflicts`, each with its footnote. Do not pick a winner.
+- Add `# History` or `# Conflicts` only when there is something to put there; never write placeholder entries.
 - **Decisions:** record what was decided, by whom, when, and whether it is confirmed or only proposed.
 - **Action items:** owner, due date and status, as stated.
 - **Risks:** description; impact, likelihood and mitigation only if stated.
