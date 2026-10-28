@@ -6,6 +6,7 @@ import json
 import os
 import sys
 from collections import Counter
+from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -171,15 +172,31 @@ def ingest_cmd(
     """Ingest documents: extract knowledge with the agent, archive the original, commit."""
     b = current()
     cfg = agents.resolve(b, agent, model)
-    push = wants_push(b, push)
+    outcomes = _ingest_and_push(b, wants_push(b, push), lambda: [
+        ingest.ingest(b, f, cfg, instruction=instruction, force=force, dry_run=dry_run,
+                      commit=wants_commit(b, no_commit), allow_secrets=allow_secrets) for f in files])
+    raise typer.Exit(_report_outcomes(outcomes))
+
+
+def _ingest_and_push(b: Brain, push: bool, run: Callable[[], list[ingest.Outcome]]) -> list[ingest.Outcome]:
+    """Ingest, then push if asked. If the push loses a race on the same files, the run is undone and the
+    remote pulled; ingest again on top of it. Idempotent: what the other side ingested is skipped."""
     if push:
         gitops.pull(b.root)
-    start = gitops.head(b.root)
-    outcomes = [ingest.ingest(b, f, cfg, instruction=instruction, force=force, dry_run=dry_run,
-                              commit=wants_commit(b, no_commit), allow_secrets=allow_secrets) for f in files]
-    if push and any(o.commit for o in outcomes):
-        gitops.publish(b.root, start)
-    raise typer.Exit(_report_outcomes(outcomes))
+    for attempt in range(1, 4):
+        start = gitops.head(b.root)
+        outcomes = run()
+        if not push or gitops.head(b.root) == start:
+            return outcomes
+        try:
+            gitops.publish(b.root, start)
+            return outcomes
+        except gitops.Stale as exc:
+            if attempt == 3:
+                raise
+            typer.echo(f"warning: {', '.join(exc.paths[:3])} changed on the remote meanwhile; "
+                       f"ingesting again on top of it (attempt {attempt + 1} of 3)", err=True)
+    raise AssertionError("unreachable")
 
 
 @inbox_app.command("process")
@@ -195,16 +212,11 @@ def inbox_process(
     """Ingest every document in inbox/ (sidecars and Ingest-Note trailers apply)."""
     b = current()
     cfg = agents.resolve(b, agent, model)
-    push = wants_push(b, push)
-    if push:
-        gitops.pull(b.root)
-    start = gitops.head(b.root)
-    outcomes, orphans = ingest.process_inbox(b, cfg, instruction=instruction, dry_run=dry_run,
-                                             commit=wants_commit(b, no_commit), allow_secrets=allow_secrets)
-    for p in orphans:
+    outcomes = _ingest_and_push(b, wants_push(b, push), lambda: ingest.process_inbox(
+        b, cfg, instruction=instruction, dry_run=dry_run, commit=wants_commit(b, no_commit),
+        allow_secrets=allow_secrets)[0])
+    for p in ingest.inbox_documents(b)[1]:
         typer.echo(f"warning: {b.rel(p)}: sidecar without a matching document", err=True)
-    if push and gitops.head(b.root):
-        gitops.publish(b.root, start)
     raise typer.Exit(_report_outcomes(outcomes))
 
 

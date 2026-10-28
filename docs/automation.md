@@ -31,7 +31,7 @@ ingest: steering committee
 Ingest-Note: Focus on new delivery risks
 ```
 
-If someone else pushed first, the run rebases onto their commits and pushes, as long as the two changed different files. If both changed the same file (another ingestion, or a decision on knowledge this run also changed), the run undoes its commits and fails. The documents are still in `inbox/`, so re-running it is safe.
+If someone else pushed first, the run rebases onto their commits and pushes, as long as the two changed different files. If both changed the same file (another ingestion, or a decision on knowledge this run also changed), the run undoes its commits, pulls, and ingests again on top of the other side's work, up to three times. That is safe because ingestion is idempotent: a document the other side already ingested is skipped. A decision (`approve`, `discard`) never retries on its own, because the person decided on a version that is gone.
 
 ## Approvals from GitHub issues
 

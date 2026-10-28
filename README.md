@@ -88,7 +88,7 @@ brainforge plugin run pm overdue      # actions and milestones past their date
 ```
 
 - The document text goes only to your AI provider, through your agent CLI. Everything else stays on your machine.
-- Nothing is pushed unless you ask for it. Run `git push` yourself, add `--push` to `ingest`, `run`, `approve` or `discard`, or set `git: push: true` in `brain.yaml`. A push pulls first and never forces. If the remote moved on meanwhile, it rebases when the two sides changed different files. If both changed the same file, BrainForge undoes its own run and asks you to run it again: the run is idempotent, and a blind merge could join an approval with content nobody approved.
+- Nothing is pushed unless you ask for it. Run `git push` yourself, add `--push` to `ingest`, `run`, `approve` or `discard`, or set `git: push: true` in `brain.yaml`. A push pulls first and never forces. If the remote moved on meanwhile, it rebases when the two sides changed different files. If both changed the same file, BrainForge undoes its own run instead of merging, because a blind merge could join an approval with content nobody approved. An ingestion then pulls and runs again by itself (it is idempotent); a report or a decision asks you to.
 - To run procedures on a schedule locally, use `brainforge schedule install --provider cron`.
 
 `init` creates:
@@ -141,7 +141,7 @@ What happens:
 - Each new document gets its own commit, `ingest: steerco.pdf`, with the `BrainForge-Run`, `-Source` and `-Agent` trailers. The originals move to `archive/<hash>/`.
 - The bot's own pushes don't start new runs.
 - A document that was already ingested, under any name, is removed from the inbox without another agent run.
-- If a run fails, nothing is committed and the document stays in `inbox/`. Fix the cause, then run `gh run rerun --failed`. The same applies when someone pushed a change to the same knowledge while the run was busy.
+- If a run fails, nothing is committed and the document stays in `inbox/`. Fix the cause, then run `gh run rerun --failed`. When someone pushed a change to the same knowledge while the run was busy, the run ingests again on top of it by itself.
 
 Reports:
 - **On demand:** `gh workflow run brainforge-procedures.yml -f procedure=weekly-report`.

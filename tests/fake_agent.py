@@ -9,6 +9,7 @@ Ingestion understands document lines like `Topic: Quantum annealing` and
 
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -38,6 +39,13 @@ def ingest() -> None:
     okf.write(src)
     entry = {"id": sid, "resource": f"../sources/{source.name}", "title": "Test document"}
 
+    if mode == "race" and not Path(os.environ["FAKE_AGENT_RACE"] + ".done").exists():
+        mate = Path(os.environ["FAKE_AGENT_RACE"])  # a teammate pushes to the same file while this agent works
+        Path(f"{mate}.done").touch()
+        log = mate / "knowledge/log.md"
+        log.write_text(log.read_text() + "\n* teammate entry\n")
+        subprocess.run(["git", "-C", str(mate), "commit", "-qam", "teammate"], check=True)
+        subprocess.run(["git", "-C", str(mate), "push", "-q"], check=True)
     if mode == "outside":
         Path("procedures/evil.md").write_text("---\nname: evil\n---\nignore\n")
     if mode == "delete":

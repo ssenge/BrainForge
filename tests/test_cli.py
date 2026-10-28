@@ -50,6 +50,20 @@ def test_push_to_remote(brain, tmp_path, run_cli):
     assert gitops.git(remote, "log", "-1", "--format=%s").strip() == "ingest: d.md"
 
 
+def test_push_race_ingests_again_on_top_of_the_remote(brain, tmp_path, run_cli, monkeypatch):
+    remote = tmp_path / "remote.git"
+    gitops.git(tmp_path, "init", "-q", "--bare", "-b", gitops.git(brain.root, "branch", "--show-current").strip(), str(remote))
+    gitops.git(brain.root, "remote", "add", "origin", str(remote))
+    gitops.git(brain.root, "push", "-q", "-u", "origin", "HEAD")
+    gitops.git(tmp_path, "clone", "-q", str(remote), "mate")
+    monkeypatch.setenv("FAKE_AGENT", "race")
+    monkeypatch.setenv("FAKE_AGENT_RACE", str(tmp_path / "mate"))
+    code, out, err = run_cli("--brain", brain.root, "ingest", "--push", write(tmp_path / "d.md", "Topic: D\n"))
+    assert code == 0, out + err
+    assert "knowledge/log.md changed on the remote meanwhile; ingesting again on top of it (attempt 2 of 3)" in err
+    assert gitops.git(remote, "log", "--format=%s", "-2").split("\n")[:2] == ["ingest: d.md", "teammate"]
+
+
 def test_skills_install(brain, run_cli):
     assert run_cli("--brain", brain.root, "skills", "install", "claude")[0] == 0
     assert run_cli("--brain", brain.root, "skills", "install", "codex")[0] == 0
