@@ -262,6 +262,9 @@ brainforge workspace open      # writes the vault settings and opens the brain i
 
 Then open the **Graph view** with ⌘G (Ctrl+G), or with the graph icon in the left ribbon. Obsidian doesn't open it by itself.
 
+<p align="center"><img src="docs/assets/obsidian-graph.png" width="700" alt="Obsidian graph view of the test brain: concepts colored by type (actions, decisions, milestones, people, an organization, a risk, two source documents and a topic), linked to each other and to the sources they came from."></p>
+<p align="center"><sub>The test brain after two documents: each concept is linked to the sources it came from and to related concepts, and colored by type.</sub></p>
+
 `workspace open` sets up the vault:
 - colors by concept type;
 - a graph limited to `knowledge/`, with the generated `index.md` and `log.md` hidden, since they link to everything and would turn the graph into a star;
