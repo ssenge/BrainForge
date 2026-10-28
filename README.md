@@ -12,7 +12,7 @@ BrainForge turns documents into a structured, Git-versioned knowledge base, call
 ## Install
 
 ```bash
-uv tool install git+<this repository>   # or: uv sync && uv run brainforge ...
+uv tool install git+https://github.com/ssenge/BrainForge.git
 ```
 
 Requirements:
