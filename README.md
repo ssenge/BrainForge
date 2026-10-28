@@ -387,7 +387,7 @@ Decisions are small commits, so people deciding in parallel don't conflict, and 
 **Nobody approves what they haven't seen.** `approve` and `discard` pull first. If the pull changed an item you named, nothing is decided and you look again. `pending --json` gives each item's `version`, the commit that last changed it; `approve milestones/go-live@3f2a1c9` stops if the item changed after that version. The same check runs when a push has to catch up with someone else's.
 
 **Approving from GitHub.** Add each person's GitHub login to the team (`github: alice-s`), then run `brainforge ci install`. It adds a `brainforge-approvals` workflow:
-- On a schedule (`--remind`, a UTC cron, weekdays 07:00 by default), it posts to an issue labelled `brainforge-approvals`. The post @mentions everyone with pending items and lists each item with a link to the exact version and a ready-to-copy command:
+- Right after each ingestion, and on a schedule (`--remind`, a UTC cron, weekdays 07:00 by default), it posts to an issue labelled `brainforge-approvals`. After an ingestion the post lists only what that ingestion produced; the scheduled one lists everything still waiting. The post @mentions everyone with pending items and lists each item with a link to the exact version and a ready-to-copy command:
   ```text
   @bob-lee
   - [Update test plan](…/blob/3f2a1c9/knowledge/actions/update-test-plan.md) (new, from Weekly minutes): `approve actions/update-test-plan@3f2a1c9`

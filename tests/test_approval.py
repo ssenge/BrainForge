@@ -203,6 +203,7 @@ def test_github_comment_route(team, tmp_path, run_cli, monkeypatch):
     manifest.write_text(manifest.read_text().replace("aliases: [Ali]", "aliases: [Ali]\n    github: alice-gh")
                         .replace("name: Bob Lee", "name: Bob Lee\n    github: bob-gh"))
     gitops.commit(team.root, "github logins", ["brain.yaml"])
+    before = gitops.head(team.root)
     add(team, tmp_path, "Topic: Quantum\nMilestone: Go-live = 2026-11-10\n")
     share(team, tmp_path)
     monkeypatch.setenv("GITHUB_REPOSITORY", "acme/brain")
@@ -211,6 +212,8 @@ def test_github_comment_route(team, tmp_path, run_cli, monkeypatch):
     assert code == 0 and out.startswith("**2 item(s) await approval.**")
     assert "@bob-gh\n- [Go-live](https://github.com/acme/brain/blob/" in out and "Carol Lead (no `github` login" in out
     command = re.search(r"`(approve milestones/go-live@\w+)`", out).group(1)
+    assert run_cli("--brain", team.root, "ci", "remind", "--since", before)[1] == out  # after the ingestion
+    assert run_cli("--brain", team.root, "ci", "remind", "--since", "HEAD")[1] == ""  # nothing new since
 
     def comment(author, text):
         monkeypatch.setattr("sys.stdin", io.StringIO(text))
@@ -231,3 +234,4 @@ def test_github_comment_route(team, tmp_path, run_cli, monkeypatch):
     assert run_cli("--brain", team.root, "ci", "install", "--remind", "0 6 * * 1")[0] == 0
     workflow = (team.root / ".github/workflows/brainforge-approvals.yml").read_text()
     assert 'cron: "0 6 * * 1"' in workflow and "brainforge ci decide" in workflow
+    assert "workflows: [brainforge-ingest]" in workflow and '--since "$SINCE"' in workflow

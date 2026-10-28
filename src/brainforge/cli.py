@@ -473,11 +473,12 @@ def _repo_url() -> str | None:
 
 
 @ci_app.command("remind")
-def ci_remind() -> None:
+def ci_remind(since: Annotated[str | None, typer.Option(
+        help="Only items changed after this commit (the reminder after an ingestion).")] = None) -> None:
     """Print the approval reminder for a GitHub issue (Markdown with @mentions); nothing if all is approved."""
     b = current()
     _sync(b)
-    text = approval.reminder(b, _repo_url())
+    text = approval.reminder(b, _repo_url(), since=since)
     if text:
         typer.echo(text)
 

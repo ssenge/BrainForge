@@ -327,10 +327,14 @@ def parse_commands(text: str) -> list[tuple[str, list[str], str | None]]:
     return commands
 
 
-def reminder(brain: Brain, repo_url: str | None = None, only: TeamMember | None = None) -> str:
+def reminder(brain: Brain, repo_url: str | None = None, only: TeamMember | None = None,
+             since: str | None = None) -> str:
     """Markdown for a GitHub issue: @mentions per approver, a link and a ready-to-copy command per item.
-    Empty when nothing is pending. `only`: just that person's item lines."""
-    items = [i for i in pending(brain) if only is None or only in i.approvers]
+    Empty when nothing is pending. `only`: just that person's item lines. `since`: only items changed
+    after that commit, so the reminder after an ingestion doesn't repeat everything still waiting."""
+    changed = set(gitops._moved(brain.root, f"{since}..HEAD")) if since else None
+    items = [i for i in pending(brain) if (only is None or only in i.approvers)
+             and (changed is None or i.rel in changed)]
 
     def line(i: Item) -> str:
         d = i.as_dict(brain)
