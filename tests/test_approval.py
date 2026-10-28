@@ -136,6 +136,18 @@ def test_client_report_waits_for_approval_and_sees_only_client_knowledge(team, t
     assert answer["citations"] == ["knowledge/topics/public.md"]
 
 
+def test_audience_view_unlinks_what_the_audience_may_not_see(team, tmp_path):
+    add(team, tmp_path, "Topic: Public\nTopic: Secret\n")
+    public = okf.read(team.knowledge / "topics/public.md")
+    public.body += "\n\nRelated: [Secret](../topics/secret.md#risk), [Itself](public.md), [Web](https://x.org/a.md)."
+    okf.write(public)
+    approval.approve(team, ["topics/public"], "client")
+    approval.approve(team, ["topics/secret"])
+    with approval.view(team, "client") as (root, _):
+        assert "Related: Secret, [Itself](public.md), [Web](https://x.org/a.md)." in (
+            root / "knowledge/topics/public.md").read_text()
+
+
 def test_unknown_audience_is_a_validation_error(team):
     write(team.root / "procedures/odd.md", "---\naudience: board\n---\nx\n")
     _, issues = procedures.load_all(team)

@@ -284,6 +284,22 @@ def check_audience(brain: Brain, audience: str) -> None:
         raise BrainError(f"unknown audience '{audience}'; brain.yaml audiences: {brain.manifest.audiences or 'none'}")
 
 
+LINK_RE = re.compile(r"(?<!!)\[([^\]]*)\]\(([^)\s#]+)(#[^)\s]*)?\)")
+
+
+def _unlink_hidden(path: Path, bundle: Path) -> None:
+    """A link to a concept the audience may not see keeps its (approved) text but loses the path,
+    so an agent working in the view can't follow or cite it."""
+    def sub(m: re.Match[str]) -> str:
+        target = m.group(2)
+        if not target.endswith(".md") or re.match(r"^[a-z][a-z0-9+.-]*:", target):
+            return m.group(0)
+        base = bundle if target.startswith("/") else path.parent
+        return m.group(0) if (base / target.lstrip("/")).exists() else m.group(1)
+
+    path.write_text(LINK_RE.sub(sub, path.read_text(encoding="utf-8")), encoding="utf-8")
+
+
 @contextlib.contextmanager
 def view(brain: Brain, audience: str, extra: list[Path] | None = None) -> Iterator[tuple[Path, set[str]]]:
     """A throwaway copy holding only what `audience` may see, with fresh index files and no archive,
@@ -295,6 +311,7 @@ def view(brain: Brain, audience: str, extra: list[Path] | None = None) -> Iterat
         for rel in sorted(allowed) + [brain.rel(p) for p in extra or []]:
             (root / rel).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(brain.root / rel, root / rel)
+            _unlink_hidden(root / rel, root / "knowledge")
         (root / "knowledge").mkdir(exist_ok=True)
         okf.write_indexes(root / "knowledge")
         yield root, allowed
