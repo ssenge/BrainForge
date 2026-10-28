@@ -28,7 +28,7 @@ def test_journey_personal_brain(tmp_path, run_cli, monkeypatch):
     assert "concepts:   3" in out  # 2 topics + 1 source
 
     gitops.git(tmp_path / "quantum-research", "config", "user.email", "alice@example.com")
-    assert run_cli("knowledge", "verify", "topics/qaoa")[0] == 0
+    assert run_cli("review", "confirm", "topics/qaoa")[0] == 0
     assert "human:alice@example.com" in (tmp_path / "quantum-research/knowledge/topics/qaoa.md").read_text()
 
 
@@ -66,6 +66,6 @@ def test_obsidian_workspace(brain, tmp_path, run_cli):
     app = json.loads((brain.root / ".obsidian/app.json").read_text())
     assert app["theme"] == "dark" and app["useMarkdownLinks"] is True and app["alwaysUpdateLinks"] is False
     graph = json.loads((brain.root / ".obsidian/graph.json").read_text())
-    assert graph["search"] == "path:knowledge/ -file:index.md -file:log.md"
+    assert graph["search"] == "path:knowledge/ -file:index.md -file:log.md -[review:discarded]"
     assert [g["query"] for g in graph["colorGroups"]] == ['[type:"Source Document"]', '[type:"Topic"]']
     assert gitops.status(brain.root) == []  # .obsidian/ is gitignored

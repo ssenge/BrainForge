@@ -28,7 +28,8 @@ BrainForge turns documents into a structured, versioned knowledge base, called a
 | **Bring your own agent** | Claude Code, Codex or any command, run headless and provider-agnostic. Use your subscription locally and an API key in CI. |
 | **Serverless, local-first** | No application server, database, vector store, registry or always-on agent. Cron and GitHub Actions are optional triggers. |
 | **Secure by design** | Documents are treated as untrusted data, which defends against prompt injection. Agents get least-privilege tools (files only, no shell, no network) and run isolated from personal agent configs. An `allowed` list restricts which providers see the data. BrainForge never force-pushes. |
-| **Human in the loop** | Review the knowledge in Git, and mark concepts as human-verified with `brainforge knowledge verify`. |
+| **Human in the loop, decentralized** | Everything the agent extracts arrives as *proposed*. Each team member confirms or discards their own items, routed by owner, from their own machine; a scanner shows who is still pending before a report. Every decision is a commit by the person who made it. |
+| **Visibility levels** | Each brain defines its own levels, such as `client` / `internal`. A report for an audience sees only confirmed knowledge at that level, enforced by code rather than by prompt. |
 | **Agent skills and MCP** | One command installs a Claude Code or Codex skill, and `brainforge mcp` serves brains read-only to Claude Desktop or any MCP client. See [Ask your brain](#ask-your-brain-from-claude-desktop-or-any-agent). |
 | **Knowledge graph** | Open the brain as an Obsidian vault, with a graph view colored by concept type. |
 | **Hierarchical and federated** *(roadmap)* | Brains form a tree across repositories, with instruction inheritance and federated, permission-aware queries. See the [Roadmap](#roadmap-a-hierarchy-of-brains). |
@@ -291,7 +292,8 @@ Both entry paths, local and GitHub, run the same pipeline:
    - every changed concept cites the new source;
    - existing provenance is kept;
    - the files are valid OKF.
-6. Commit. If anything fails, the changes are rolled back with git.
+6. Mark every created or changed concept as `proposed` for review (see [Review and visibility](#review-and-visibility)).
+7. Commit. If anything fails, the changes are rolled back with git.
 
 `brainforge inbox process` runs the inbox path locally, without CI.
 
@@ -315,6 +317,51 @@ Instructions shift what the agent pays attention to; they never narrow what gets
 - Ingesting the same bytes again, under any filename, does nothing. In the inbox, the duplicate is simply removed.
 - A failed run leaves the working tree exactly as it was, so retrying is always safe.
 - `--force` re-ingests a document and reuses its source concept.
+
+## Review and visibility
+
+What the agent extracts from a document is a proposal. People confirm it, item by item, each person their own.
+
+**Set up the team once** in `brain.yaml` (all three keys are optional):
+
+```yaml
+visibility: [client, internal]       # your own levels, most open first; new items get the last one
+team:
+  - name: Alice Smith
+    email: alice@example.com         # how BrainForge recognizes you (git config user.email)
+    aliases: [Alice]                 # how documents name you as an owner
+  - name: Carol Lead
+    reviews: [{type: "*"}]           # catch-all for items without a known owner
+needs_review: [{type: Decision}, {type: Action Item}, {type: Risk}, {type: Milestone}]
+```
+
+**A typical cycle:**
+
+1. Monday's meeting minutes are ingested. Every decision, action, risk and milestone the agent created or changed is `review: proposed`, with the most restricted visibility. The agent cannot confirm its own output or open it up.
+2. Each team member reviews their own queue, from wherever they work. Routing uses the item's `owner`; unowned items go to the first member whose `reviews` rules match.
+   ```bash
+   brainforge review list                                  # my queue: + new, ~ changed
+   brainforge review confirm actions/send-slides --push    # optionally: --visibility client
+   brainforge review discard risks/token-budget --push
+   ```
+   In Claude Code, just ask *"review my brain items"*. The BrainForge skill shows the queue as a short table with links that open each item in Obsidian, and asks Confirm, Confirm as client, Discard or Later, four items at a time.
+3. Before Tuesday's status meeting, the scanner shows who is still pending:
+   ```text
+   $ brainforge review status
+   3 item(s) await review (oldest: 1 day(s))
+     Alice Smith    done
+     Bob Lee          1  actions/request-aws-access
+     Carol Lead       2  decisions/pilot-scope, risks/token-budget
+   ```
+   `--check` makes it exit 1 while anything is pending, for scripts and CI.
+4. The report runs. With `require_review: true` in the procedure, it refuses to run while items are pending, and names who still has to act. With `audience: client`, it is built only from confirmed, client-visible items.
+
+**What each decision does:**
+- **Confirm** sets `review: confirmed` and records you in OKF `verified`.
+- **Discard** of a change to a confirmed item restores the confirmed version from git. Discard of a new item keeps it as a hidden tombstone, so the next meeting doesn't recreate it.
+- **Later** leaves it pending.
+
+Decisions are small commits, so people reviewing in parallel don't conflict, and `git log` shows who decided what.
 
 ## Agents and authentication
 
@@ -348,12 +395,14 @@ With `adapter: command`, any program works. It receives the prompt on stdin, run
 | `brain show`, `brain validate` | Summary; validate manifest, layout, knowledge and procedures |
 | `ingest FILE…` | Ingest documents (`--instruction`, `--dry-run`, `--force`, `--no-commit`, `--push`) |
 | `inbox process` | Ingest everything in `inbox/` |
-| `knowledge search [TEXT]` | Deterministic search (`--type`, `--tag`, `--status`, `--links-to`, `--linked-from`) |
-| `knowledge query QUESTION` | Agent answer with citations, read-only |
+| `knowledge search [TEXT]` | Deterministic search (`--type`, `--tag`, `--status`, `--review`, `--links-to`, `--linked-from`) |
+| `knowledge query QUESTION` | Agent answer with citations, read-only (`--audience LEVEL`) |
 | `knowledge validate`, `knowledge index` | OKF checks; regenerate `index.md` files |
-| `knowledge verify CONCEPT` | Record a human review (OKF `verified`) |
+| `review list` | Your review queue (`--for NAME`, `--all`) |
+| `review status` | Scanner: who still has items to review (`--check` exits 1 while anything is pending) |
+| `review confirm ITEM…`, `review discard ITEM…` | Decide (`--visibility LEVEL`, `--push`) |
 | `procedures list`, `procedures validate` | Procedures with schedule and last run |
-| `run PROCEDURE` | Write a report now |
+| `run PROCEDURE` | Write a report now (`--allow-pending` skips the review gate) |
 | `schedule tick` | Run whatever is due (call it from cron or CI) |
 | `schedule install --provider cron\|github-actions` | Install the scheduler |
 | `ci install` | GitHub Actions workflow for inbox ingestion |

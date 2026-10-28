@@ -52,13 +52,15 @@ Integration testing is scheduled for 2026-11-17 (p. 2).[^meeting-2026-10-28]
 - Add the given source concept to `sources` of **every** concept you create or change. The `resource` is the path relative to the concept file, e.g. `../sources/<file>.md`. Use the source id given in the task. Keep all existing `sources` entries.
 - Attribute each claim with a footnote `[^<source id>]` and define each footnote once, at the end of the file. Put page or slide locations into the claim text, e.g. "(p. 3)" or "(slide 4)".
 - Link related concepts with relative links, e.g. `[Alice Smith](../entities/alice-smith.md)`.
-- Do not write `generated`, `verified`, `index.md` or `log.md`. BrainForge maintains them.
+- When the document names who is responsible for a concept (the owner of an action or risk, a decision maker), record it as written in frontmatter `owner`, e.g. `owner: Alice Smith` or a list. Reviews are routed by it.
+- Do not write `generated`, `verified`, `review`, `visibility`, `index.md` or `log.md`. BrainForge maintains them.
 
 ## Updating knowledge
 
 - **Explicit change:** when the document explicitly supersedes an earlier statement ("moved to", "rescheduled", "replaces"), update `# Current state` and move the earlier statement, with its footnote, into `# History`.
 - **Conflict:** when statements disagree without explicit supersession, keep both under `# Conflicts`, each with its footnote. Do not pick a winner.
 - Add `# History` or `# Conflicts` only when there is something to put there; never write placeholder entries.
+- **Discarded concepts:** a concept with `review: discarded` was rejected by a person. Never create a replacement for it. Update it only when the document adds new information about it; it will then be reviewed again.
 - **Decisions:** record what was decided, by whom, when, and whether it is confirmed or only proposed.
 - **Action items:** owner, due date and status, as stated.
 - **Risks:** description; impact, likelihood and mitigation only if stated.

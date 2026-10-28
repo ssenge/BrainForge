@@ -37,6 +37,14 @@ class GitConfig(BaseModel):
     push: bool = False
 
 
+class TeamMember(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str
+    email: str | None = None
+    aliases: list[str] = []  # other spellings documents use, e.g. a first name
+    reviews: list[dict[str, str]] = []  # frontmatter globs, e.g. {type: Risk}; any rule matches
+
+
 class Manifest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     schema_version: Literal[1] = 1
@@ -45,8 +53,18 @@ class Manifest(BaseModel):
     description: str = ""
     agent: AgentConfig = AgentConfig()
     git: GitConfig = GitConfig()
+    visibility: list[str] = []  # most open first; new knowledge gets the last (most restricted) level
+    team: list[TeamMember] = []
+    needs_review: list[dict[str, str]] = []  # frontmatter globs, e.g. {type: Decision}; empty = everything
     parent: Any = None
     children: Any = None
+
+    @field_validator("visibility")
+    @classmethod
+    def _levels(cls, value: list[str]) -> list[str]:
+        if len(set(value)) != len(value) or not all(v.strip() for v in value):
+            raise ValueError("visibility levels must be unique, non-empty names")
+        return value
 
     @field_validator("parent", "children")
     @classmethod
@@ -135,7 +153,7 @@ def init(target: Path, name: str | None = None, brain_id: str | None = None, ada
     target.mkdir(parents=True, exist_ok=True)
     name = name or target.name.replace("-", " ").title()
     manifest = Manifest(id=brain_id or slugify(target.name), name=name, agent=AgentConfig(adapter=adapter))  # type: ignore[arg-type]
-    data = manifest.model_dump(exclude_none=True, exclude={"parent", "children"})
+    data = manifest.model_dump(exclude_none=True, exclude={"parent", "children", "visibility", "team", "needs_review"})
     (target / MANIFEST).write_text(
         "# BrainForge brain manifest (see docs/brain-manifest.md in BrainForge)\n" + okf.dump_yaml(data),
         encoding="utf-8",

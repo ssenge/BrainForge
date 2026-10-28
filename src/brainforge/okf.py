@@ -17,6 +17,7 @@ import yaml
 OKF_VERSION = "0.2"
 RESERVED = {"index.md", "log.md"}
 STATUSES = {"draft", "stable", "deprecated"}
+REVIEW_STATES = ("proposed", "confirmed", "discarded")  # BrainForge profile, see docs/knowledge-profile.md
 
 GROUP_DESCRIPTIONS = {
     "sources": "Ingested source documents and their provenance.",
@@ -192,6 +193,8 @@ def validate_concept(path: Path, bundle: Path) -> list[Issue]:
         err("missing required 'type'")
     if c.meta.get("status", "stable") not in STATUSES:
         err(f"status must be one of {sorted(STATUSES)}")
+    if c.meta.get("review", "confirmed") not in REVIEW_STATES:
+        err(f"review must be one of {list(REVIEW_STATES)}")
 
     generated = c.meta.get("generated")
     if generated is not None:
@@ -323,10 +326,11 @@ def search(
     type: str | None = None,
     tag: str | None = None,
     status: str | None = None,
+    review: str | None = None,
     links_to: str | None = None,
     linked_from: str | None = None,
 ) -> list[tuple[int, Concept]]:
-    """Deterministic search. Returns (score, concept), best first."""
+    """Deterministic search. Returns (score, concept), best first. Discarded concepts only on request."""
     concepts = read_all(bundle)
 
     def target(ref: str) -> Path:
@@ -345,6 +349,9 @@ def search(
         if tag and tag not in (c.meta.get("tags") or []):
             continue
         if status and c.meta.get("status", "stable") != status:
+            continue
+        state = c.meta.get("review") or "confirmed"
+        if (review and state != review) or (not review and state == "discarded"):
             continue
         if links_to and target(links_to) not in links(c, bundle):
             continue

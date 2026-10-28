@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from cronsim import CronSim, CronSimError
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-from brainforge import agents, gitops, okf
+from brainforge import agents, gitops, okf, review
 from brainforge.brain import AgentConfig, Brain, Layer, blob_hash, instruction_layers, render_layers
 from brainforge.ingest import require_clean
 
@@ -78,6 +78,8 @@ class Procedure(BaseModel):
     description: str = ""
     agent: Literal["claude", "codex", "command"] | None = None
     knowledge: Scope = Scope()
+    audience: str | None = None  # a brain.yaml visibility level: the report sees only confirmed knowledge up to it
+    require_review: bool = False  # refuse to run while knowledge awaits review
     output: Output = Field(default_factory=Output)
     schedule: Schedule | None = None
     path: Path = Field(exclude=True)
@@ -119,6 +121,8 @@ def load_all(brain: Brain) -> tuple[list[Procedure], list[okf.Issue]]:
         seen[p.name] = p
         if p.output.template and not (brain.root / p.output.template).is_file():
             issues.append(okf.Issue("error", brain.rel(p.path), f"template not found: {p.output.template}"))
+        if p.audience and p.audience not in brain.manifest.visibility:
+            issues.append(okf.Issue("error", brain.rel(p.path), f"audience '{p.audience}' is not a visibility level in brain.yaml"))
     return procs, issues
 
 
@@ -190,8 +194,19 @@ Run procedure `{proc.name}` (version {proc.version}) and write the report to `{r
 """
 
 
+def gate(brain: Brain) -> None:
+    """Raise if knowledge still awaits review, naming who has to act."""
+    scan = review.scan(brain)
+    if not scan["pending"]:
+        return
+    who = [f"{name} ({len(items)})" for name, items in scan["reviewers"].items() if items]
+    who += [f"unassigned ({len(scan['unassigned'])})"] if scan["unassigned"] else []
+    raise ProcedureError(f"{scan['pending']} item(s) await review: {', '.join(who)}. "
+                         "See `brainforge review status`, or run with --allow-pending.")
+
+
 def run(brain: Brain, proc: Procedure, cfg: AgentConfig, *, instruction: str | None = None,
-        force: bool = False, commit: bool = True, now: datetime | None = None) -> dict:
+        force: bool = False, commit: bool = True, allow_pending: bool = False, now: datetime | None = None) -> dict:
     root = brain.root
     now = now or datetime.now(UTC)
     date = now.astimezone(proc.tz()).date().isoformat()
@@ -201,6 +216,10 @@ def run(brain: Brain, proc: Procedure, cfg: AgentConfig, *, instruction: str | N
         raise ProcedureError(f"{report_rel} already exists; use --force to regenerate it")
     if proc.output.format != "markdown" and not shutil.which("pandoc"):
         raise ProcedureError(f"output format '{proc.output.format}' needs pandoc (https://pandoc.org/installing.html)")
+    if proc.audience and proc.audience not in brain.manifest.visibility:
+        raise ProcedureError(f"audience '{proc.audience}' is not a visibility level in brain.yaml")
+    if proc.require_review and not allow_pending:
+        gate(brain)
 
     history = [p for _, p in reports(brain, proc) if p != report]
     previous = history[-1] if history else None
@@ -221,7 +240,17 @@ def run(brain: Brain, proc: Procedure, cfg: AgentConfig, *, instruction: str | N
 
     with gitops.lock(root):
         try:
-            agents.run(cfg, build_prompt(brain, proc, layers, report_rel, previous, changed), root, write=True)
+            allowed: set[str] | None = None
+            if proc.audience:
+                # The agent works on a copy with only what this audience may see; nothing else comes back.
+                with review.view(brain, proc.audience, [previous] if previous else []) as (view_root, allowed):
+                    changed = [p for p in changed if p in allowed] if changed is not None else None
+                    agents.run(cfg, build_prompt(brain, proc, layers, report_rel, previous, changed), view_root, write=True)
+                    if (view_root / report_rel).is_file():
+                        report.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(view_root / report_rel, report)
+            else:
+                agents.run(cfg, build_prompt(brain, proc, layers, report_rel, previous, changed), root, write=True)
             stray = [p for c, p in gitops.status(root) if p != report_rel and not (c == "??" and p in baseline)]
             if stray:
                 raise ProcedureError(f"agent changed files other than the report: {', '.join(stray)}")
@@ -231,6 +260,8 @@ def run(brain: Brain, proc: Procedure, cfg: AgentConfig, *, instruction: str | N
             concept = okf.Concept(report, {}, body)
             bundle = brain.knowledge.resolve()
             cited = sorted({t for t in okf.links(concept, brain.knowledge) if t.is_relative_to(bundle) and t.suffix == ".md"})
+            if allowed is not None and (leaked := [brain.rel(t) for t in cited if t.exists() and brain.rel(t) not in allowed]):
+                raise ProcedureError(f"report for audience '{proc.audience}' cites knowledge it may not see: {', '.join(leaked)}")
             broken = [os.path.relpath(t, report.parent) for t in cited if not t.exists()]
             sources = [{"resource": os.path.relpath(t, report.parent)} for t in cited if t.exists()]
             meta = {
@@ -238,6 +269,7 @@ def run(brain: Brain, proc: Procedure, cfg: AgentConfig, *, instruction: str | N
                 "title": f"{proc.name} {date}",
                 "procedure": {"name": proc.name, "version": proc.version},
                 "brain": brain.id,
+                **({"audience": proc.audience} if proc.audience else {}),
                 "generated": {"by": agents.actor(cfg), "at": okf.now_iso(now)},
                 "sources": sources,
                 "brainforge": {

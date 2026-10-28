@@ -10,6 +10,8 @@ description: Weekly customer report.
 agent: claude                    # optional adapter override
 knowledge:
   self: true                     # ancestors/descendants: Phase B
+audience: client                 # optional: a visibility level from brain.yaml
+require_review: true             # optional: refuse to run while knowledge awaits review
 output:
   format: markdown               # markdown | docx | pptx | html | pdf
   directory: reports/weekly      # default: reports/<name>
@@ -60,6 +62,12 @@ brainforge:
 ```
 
 To reproduce a report's input, run `git checkout <commit>`.
+
+## Review gate and audiences
+
+- **`require_review: true`** refuses the run while anything awaits review and names who still has to act, e.g. `3 item(s) await review: Bob Lee (1), Carol Lead (2)`. Scheduled runs fail the same way, so the report is never built on unreviewed knowledge. `brainforge run <name> --allow-pending` overrides it.
+- **`audience: <level>`** builds the report only from confirmed knowledge at that visibility level or more open. The agent works on a throwaway copy that contains just those concepts, with fresh index files and no archive, log or configuration, so internal items aren't there to leak. Afterwards BrainForge rejects the report if it cites any concept outside that set. The report records `audience` in its frontmatter.
+- Without `audience`, reports see everything and mark facts from proposed items as "(unconfirmed)".
 
 ## Rules for runs and output
 

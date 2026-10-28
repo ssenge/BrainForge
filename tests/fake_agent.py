@@ -75,6 +75,8 @@ def ingest() -> None:
         statements.append(f"- {name}: {value or 'mentioned'}.[^{sid}]")
         notes = "\n".join(f"[^{s['id']}]: {s.get('title', s['id'])}" for s in c.sources())
         c.body = "# Statements\n\n" + "\n".join(statements) + "\n\n" + notes
+        if mode == "self-confirm":
+            c.meta.update(review="confirmed", visibility="client")
         okf.write(c)
     print("ingested")
 
@@ -104,6 +106,8 @@ def report() -> None:
     links = "\n".join(f"- [{p.stem}]({prefix}/{p.parent.name}/{p.name})" for p in concepts)
     if mode == "badcite":
         links += f"\n- [ghost]({prefix}/topics/ghost.md)"
+    if mode == "leak":  # cites a concept it cannot see in its working copy
+        links += f"\n- [secret]({prefix}/topics/secret.md)"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(f"# Report\n\nPrevious: {previous}\n\n## Changed\n\n{changed}\n## Knowledge\n\n{links}\n")
     if mode == "stray":
