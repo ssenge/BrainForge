@@ -104,6 +104,12 @@ def version(root: Path, rel: str) -> str | None:
     return gitops.git(root, "log", "-1", "--format=%H", "--", rel, check=False).strip() or None
 
 
+def _wider(brain: Brain, c: okf.Concept) -> list[str]:
+    """Audiences wider than the item's own: what "approve for …" can offer."""
+    levels, aud = brain.manifest.audiences, audience_of(brain, c)
+    return levels[:levels.index(aud)] if aud in levels else []
+
+
 @dataclass
 class Item:
     concept: okf.Concept
@@ -118,7 +124,8 @@ class Item:
         return {
             "id": okf.concept_id(brain.knowledge, c.path), "path": self.rel, "url": url(c.path),
             "type": c.meta.get("type"), "title": c.title, "owner": c.meta.get("owner"),
-            "audience": audience_of(brain, c), "kind": "changed" if self.since else "new", "since": self.since,
+            "audience": audience_of(brain, c), "wider": _wider(brain, c),
+            "kind": "changed" if self.since else "new", "since": self.since,
             "source": (sources[-1].get("title") or sources[-1].get("id")) if sources else None,
             "pending_since": at or None, "approvers": [m.name for m in self.approvers],
             "version": (version(brain.root, self.rel) or "")[:7] or None,
@@ -265,8 +272,12 @@ def decide(brain: Brain, verb: str, refs: list[str], *, audience: str | None = N
 
 def _approved_line(brain: Brain, path: Path, audience: str | None) -> str:
     hidden = hidden_links(brain, path, audience) if audience else []
+    waiting = [h for h in hidden if state(okf.read(brain.knowledge / f"{h}.md")) == "pending"]
+    narrower = [h for h in hidden if h not in waiting]
+    notes = ([f"links left out of {audience} views: {', '.join(narrower)}"] if narrower else []) + (
+        [f"links to items still awaiting approval: {', '.join(waiting)}"] if waiting else [])
     return (f"approved {okf.concept_id(brain.knowledge, path)}" + (f" for {audience}" if audience else "")
-            + (f" (links {audience} can't see, left out for {audience}: {', '.join(hidden)})" if hidden else ""))
+            + (f" ({'; '.join(notes)})" if notes else ""))
 
 
 # --- GitHub comments ----------------------------------------------------------------------------

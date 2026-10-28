@@ -37,7 +37,7 @@ Approvals are enabled: you record the user's own decisions on knowledge awaiting
 1. Call `pending`. Show the items as one compact table, nothing more: | # | Item | What changed | Source |,
    with Item as [title](url). For a changed item, summarize its `changes` diff in a few words.
 2. Ask about up to four items at a time, one short question each, and wait for the user's explicit answer:
-   Approve, Approve for <audience> (only if `list_brains` shows audiences), Discard, or Not now.
+   Approve, one "Approve for <audience>" per entry in the item's `wider` list, Discard, or Not now.
 3. Only then call `approve` or `discard` with the `ref` values exactly as `pending` returned them.
    Never decide on your own or for someone else. If a decision fails because the item changed,
    show the new version before asking again.

@@ -33,7 +33,7 @@ New and changed knowledge arrives as `approval: pending`. Each person approves t
 2. Show the batch as one compact table, nothing more: `| # | Item | Gaps | Source |`, where Item is `[<title>](<url>)` (the `url` opens the note in Obsidian) and Gaps names what is missing, such as an owner or a due date.
 3. Ask about up to four items at once with your question tool if you have one, one question per item. Keep each question to one line, e.g. "Go-live date moved to 2027-02-01: approve?", and offer exactly:
    - **Approve**: `brainforge approve <id>@<version>`
-   - **Approve for <audience>**: only if `brain.yaml` defines `audiences`; `brainforge approve <id>@<version> --audience <audience>`
+   - **Approve for <audience>**: one option per entry in the item's `wider` list (none if it is empty); `brainforge approve <id>@<version> --audience <audience>`
    - **Discard**: `brainforge discard <id>@<version>`
    - **Not now**: do nothing; it stays pending
    Offer to approve routine items together ("Approve all 3") when nothing is missing.
