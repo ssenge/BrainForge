@@ -1,13 +1,37 @@
-<p align="center"><img src="docs/assets/logo.png" alt="BrainForge" width="320"></p>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark.png">
+    <img src="docs/assets/logo-light.png" alt="BrainForge" width="320">
+  </picture>
+</p>
 
-BrainForge turns documents into a structured, Git-versioned knowledge base, called a **brain**, that AI agents maintain and query. Each brain is a plain Git repository. Knowledge is stored as an [Open Knowledge Format (OKF) v0.2](https://github.com/GoogleCloudPlatform/open-knowledge-format/blob/main/SPEC.md) bundle: Markdown files with YAML frontmatter, readable without any tooling.
+<p align="center"><b>Git-native, agentic knowledge management.<br>Knowledge as Code, managed through GitOps.</b></p>
 
-- **Git is the source of truth.** Every ingestion and every report is a commit; `git revert` undoes it.
-- **No server or database.** Everything runs locally from the CLI. GitHub Actions is optional.
-- **Bring your own agent.** Claude Code, Codex, or any command, run headless with each CLI's own login.
-- **Extraction, not invention.** Every claim carries a footnote back to its source document. Conflicting statements are kept side by side, not overwritten.
+BrainForge turns documents into a structured, versioned knowledge base, called a **brain**, that AI agents build, maintain and query. Each brain is a plain Git repository. Knowledge is stored as an [Open Knowledge Format (OKF) v0.2](https://github.com/GoogleCloudPlatform/open-knowledge-format/blob/main/SPEC.md) bundle: Markdown files with YAML frontmatter that you can read without any tooling.
 
-> Status: Phase A, a single brain per repository. Parent/child brains and federation across repositories are planned for Phase B; see [`concept/implementation-plan.md`](concept/implementation-plan.md).
+## Highlights
+
+| | |
+|---|---|
+| **Knowledge as Code** | Knowledge, instructions, procedures and reports are Markdown + YAML in Git. You can diff, review, branch and blame them like source code. |
+| **GitOps** | Git is the single source of truth. Every ingestion and every report is one atomic commit with machine-readable trailers (`BrainForge-Run`, `-Source`, `-Agent`). `git revert` is the undo button. |
+| **Event-driven ingestion** | Push a document to `inbox/`, and a GitHub Actions workflow triggered by the push ingests it, commits the knowledge and pushes it back. Or run `brainforge ingest` locally; both paths share one pipeline. |
+| **Agentic consolidation** | LLM agents don't just append: they merge new facts into existing concepts, move superseded statements to `# History` and record contradictions under `# Conflicts`. Knowledge compounds instead of piling up as RAG chunks. |
+| **Open standard, no lock-in** | Google's [OKF v0.2](https://github.com/GoogleCloudPlatform/open-knowledge-format) with relative links. It is portable, readable by any OKF consumer, and works in GitHub, Obsidian or any editor. |
+| **Provenance by design** | Every claim has a footnote citing its source document, every source is archived by content hash, and `generated` / `verified` trust stamps follow OKF. It is auditable end to end. |
+| **Extraction before inference** | The ingestion agent may only extract what the document states. Reports mark interpretations as `Derived:` and missing information as "Not documented". |
+| **Deterministic guardrails** | Deterministic code wraps the probabilistic LLM steps. Agent output is validated through `git status` and OKF schema checks, and is rolled back on any violation. |
+| **Idempotent** | Content addressing (SHA-256) means the same document is never ingested twice, under any name, on any machine. Every run can be safely retried. |
+| **Declarative procedures** | Report procedures are Markdown files with YAML frontmatter, cron schedules with time zones, and DOCX/PPTX/HTML/PDF output via pandoc. Reports are reproducible from a pinned commit. |
+| **Bring your own agent** | Claude Code, Codex or any command, run headless and provider-agnostic. Use your subscription locally and an API key in CI. |
+| **Serverless, local-first** | No application server, database, vector store, registry or always-on agent. Cron and GitHub Actions are optional triggers. |
+| **Secure by design** | Documents are treated as untrusted data, which defends against prompt injection. Agents get least-privilege tools (files only, no shell, no network) and run isolated from personal agent configs. An `allowed` list restricts which providers see the data. BrainForge never force-pushes. |
+| **Human in the loop** | Review the knowledge in Git, and mark concepts as human-verified with `brainforge knowledge verify`. |
+| **Agent skills** | One command installs a Claude Code or Codex skill, so your coding agent can search, query and ingest for you. |
+| **Knowledge graph** | Open the brain as an Obsidian vault, with a graph view colored by concept type. |
+| **Hierarchical and federated** *(roadmap)* | Brains form a tree across repositories, with instruction inheritance and federated, permission-aware queries. See the [Roadmap](#roadmap-a-hierarchy-of-brains). |
+
+> Status: Phase A, a single brain per repository. A hierarchy of brains across repositories comes next; see the [Roadmap](#roadmap-a-hierarchy-of-brains).
 
 ## Install
 
@@ -146,6 +170,107 @@ Exit codes:
 | 1 | failure |
 | 2 | usage or config error |
 | 3 | partial failure |
+
+## Roadmap: a hierarchy of brains
+
+Phase A, available now, gives you a single brain per repository. Phase B connects brains into a hierarchy. Each level keeps its own knowledge, instructions and procedures and shares them along the tree, so knowledge never has to be copied.
+
+```
+consulting                         company: guidelines, templates, terminology
+└── consulting/customer-a          account: contacts, contracts, customer context
+    ├── …/customer-a/project-1     project: plan, milestones, risks
+    │   ├── …/project-1/stream-a   workstream: meeting notes, decisions
+    │   └── …/project-1/stream-b
+    └── …/customer-a/project-2     (may live in a separate repository)
+```
+
+### Hierarchy is logical, repositories are physical
+
+- The levels are yours to define. Company, customer, project and stream are examples, not built-in types. A brain can sit at any depth.
+- Where a brain lives is independent of where it sits in the tree:
+  - in its own repository;
+  - nested inside another brain's repository;
+  - one of several brains in a shared repository.
+- Each brain declares its links in `brain.yaml`:
+
+  ```yaml
+  id: consulting/customer-a/project-1
+  parent:   { repository: git@github.com:org/customer-a.git, path: / }
+  children: [ { repository: git@github.com:org/stream-b.git, path: / } ]
+  ```
+
+- There is **no central registry**. Declarations don't have to match: a child may know its parent even if the parent doesn't know the child. A parent only traverses the children it declares and can access.
+
+### What flows down, what flows up
+
+| | Direction | Behaviour |
+|---|---|---|
+| **Instructions** | parent → child | Ancestor `instructions.md` files become instruction layers between the framework defaults and the brain's own instructions, from the root down. |
+| **Procedures** | parent → child | Children inherit procedures from their ancestors. A local procedure with the same name overrides an inherited one, and a qualified name (`consulting:steerco-report`) picks one explicitly. |
+| **Templates and assets** | parent → child | A project can use the company's `corporate.pptx` without copying it. |
+| **Knowledge** | both ways, on request | A procedure declares what it may see; see "Scopes" below. |
+
+### Scopes
+
+```yaml
+knowledge:
+  self: true
+  ancestors:   { include: true, selection: relevant-only }   # account context, not company news
+  descendants: { include: true, recursive: true }             # roll up every project and stream
+  siblings:    { include: false }
+```
+
+- Being able to access knowledge does not make it relevant. Ancestor knowledge is filtered to what matters for the task.
+- A scope never gets around repository permissions. Your git access is the permission model.
+- A run at a higher level aggregates the levels below it:
+
+  ```bash
+  brainforge run consulting/customer-a steerco-report
+  ```
+
+  This builds one report from all accessible projects and streams, across repository boundaries.
+
+### Honest coverage
+
+A federated report states which brains it actually covered:
+
+| Brain status | Meaning |
+|---|---|
+| **included** | read successfully, pinned to a commit |
+| **unavailable** | known, but the repository could not be fetched |
+| **unauthorized** | known, but access was denied |
+| **unknown** | not declared anywhere, so it cannot be found |
+
+A report never claims to cover "all projects" unless that can be proven.
+
+Traversal detects cycles and duplicates, enforces a maximum depth, and returns partial results with clear errors instead of failing as a whole.
+
+### New commands
+
+| Command | Purpose |
+|---|---|
+| `brainforge brain tree` | Show the hierarchy around a brain, with access status |
+| `brainforge sync` | Fetch and update the declared parents and children into a local cache |
+| `brainforge workspace create\|sync` | Assemble several repositories into one Obsidian workspace |
+| `brainforge run <brain-id> <procedure>` | Run a procedure at any level of the tree |
+
+### Milestones
+
+| | Scope |
+|---|---|
+| **B1** | Several brains in one repository (`brains/<child>/`), `brain tree`, ancestor instruction layers, procedure inheritance with qualified names, inbox routing via a `Brain:` commit trailer |
+| **B2** | Parents and children in other repositories: repository cache, `sync`, cycle, duplicate and depth checks, access errors, partial results |
+| **B3** | Federated scopes for query and run, and the coverage section in reports |
+| **B4** | Inherited templates and assets, multi-repository Obsidian workspaces, an end-to-end demo |
+
+Phase A already prepares for this:
+- instruction layers, procedure search paths and the brains a query covers are plain lists that Phase B only adds entries to;
+- `parent` and `children` are reserved in `brain.yaml`.
+
+Further out:
+- an optional registry or discovery service;
+- knowledge projections: standardized views, such as a project-status schema, derived from the knowledge;
+- ranked retrieval (BM25 or embeddings) for large hierarchies. Details are in [`concept/implementation-plan.md`](concept/implementation-plan.md) and [`concept/idea.md`](concept/idea.md).
 
 ## Documentation
 
