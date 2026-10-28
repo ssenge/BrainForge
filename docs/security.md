@@ -31,6 +31,12 @@ BrainForge processes confidential documents with LLM agents. This document descr
 - **Issue comments** decide only when the commenter has write access (`author_association` OWNER, MEMBER or COLLABORATOR) *and* is listed with that `github` login in `brain.yaml`. The comment reaches BrainForge as an environment variable, never as part of the script, and is parsed for `approve`/`discard` lines only.
 - **Residual risk:** anyone who can push to the repository can also edit `brain.yaml` or the knowledge directly; approvals record who decided, they don't replace repository permissions. Each team member may decide on any item, not only their own: the routing tells people what to look at, it isn't access control.
 
+## Plugins
+
+- A plugin lives in the brain repository (`plugins/<name>/`), so it is reviewed and versioned like everything else. Its instructions come after the framework policy, which they can't override.
+- Plugin scripts run only when someone calls `brainforge plugin run`, with that person's permissions; nothing runs them automatically. Treat them like any code you run.
+- Agents can't change plugins: the post-run check allows changes only in `knowledge/`.
+
 ## Data leaves your machine only through the agent you chose
 
 - BrainForge sends document content only to the configured agent CLI.

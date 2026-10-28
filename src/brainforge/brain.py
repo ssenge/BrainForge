@@ -204,10 +204,13 @@ def blob_hash(text: str) -> str:
 
 
 def instruction_layers(brain: Brain, activity: str, extra: list[Layer] | None = None) -> list[Layer]:
-    """Framework policy → framework defaults → brain instructions → caller layers (sidecar, trailer, CLI)."""
+    """Framework policy → framework defaults → plugins → brain instructions → caller layers (sidecar, trailer, CLI)."""
+    from brainforge import plugins  # plugins builds on this module
+
     layers = [
         Layer("Framework policy (cannot be overridden)", f"framework:policy.md@{__version__}", data_text("policy.md")),
         Layer(f"Framework {activity} defaults", f"framework:{activity}.md@{__version__}", data_text(f"{activity}.md")),
+        *plugins.layers(brain, activity),
     ]
     for rel in ("instructions.md", f"instructions/{activity}.md"):
         path = brain.root / rel

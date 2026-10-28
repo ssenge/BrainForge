@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
-from brainforge import gitops, okf
+from brainforge import gitops, okf, plugins
 from brainforge.brain import Brain, BrainError, TeamMember
 
 
@@ -129,6 +129,7 @@ class Item:
             "source": (sources[-1].get("title") or sources[-1].get("id")) if sources else None,
             "pending_since": at or None, "approvers": [m.name for m in self.approvers],
             "version": (version(brain.root, self.rel) or "")[:7] or None,
+            "gaps": plugins.gaps(brain, c),
         }
 
 
@@ -312,7 +313,8 @@ def reminder(brain: Brain, repo_url: str | None = None, only: TeamMember | None 
         title = f"[{d['title']}]({repo_url}/blob/{d['version']}/{i.rel})" if repo_url and d["version"] else d["title"]
         diff = f", [changes]({repo_url}/compare/{d['since'][:7]}...{d['version']})" if repo_url and d["since"] else ""
         source = f", from {d['source']}" if d["source"] else ""
-        return f"- {title} ({d['kind']}{source}{diff}): `approve {ref}`"
+        gaps = f", missing {', '.join(d['gaps'])}" if d["gaps"] else ""
+        return f"- {title} ({d['kind']}{source}{gaps}{diff}): `approve {ref}`"
 
     if only or not items:
         return "\n".join(map(line, items))

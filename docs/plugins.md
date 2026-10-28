@@ -1,0 +1,65 @@
+# Plugins
+
+The core of BrainForge is domain-neutral: entities, topics, sources, approvals, reports. A plugin adds what a domain needs, such as project management (`plugins/pm`, bundled), on top of that.
+
+```bash
+brainforge plugin list                  # installed in this brain, and bundled ones
+brainforge plugin add pm                # a bundled plugin by name, or a path to a plugin folder
+git add plugins && git commit -m "plugin: pm"
+brainforge plugin run pm overdue        # a plugin script
+brainforge init my-project --plugin pm  # a new brain with plugins
+```
+
+`plugin add` copies the plugin into the brain's `plugins/<name>/`. The folder is the installation:
+- it is versioned with the brain, so CI and teammates need nothing extra;
+- you can adapt the copy for one brain;
+- `plugin add` again replaces the copy (review the change with `git diff`);
+- deleting the folder removes the plugin.
+
+## Layout
+
+```
+plugins/<name>/
+├── plugin.yaml                  name, version, description, types
+├── instructions/<activity>.md   ingestion.md, query.md, reporting.md (optional)
+├── procedures/*.md              procedures, like the brain's own (optional)
+├── scripts/                     commands for `brainforge plugin run` (optional)
+└── README.md
+```
+
+## `plugin.yaml`
+
+```yaml
+name: pm                          # must match the folder name; lowercase, kebab-case
+version: 1
+description: Project management.
+types:
+  - type: Action Item             # the frontmatter `type`
+    group: actions                # folder under knowledge/
+    description: A task someone committed to.
+    fields:
+      owner: {description: "who does it, as written", expected: true}
+      due: {format: date, expected: true}
+      state: {values: [open, done, cancelled]}
+```
+
+Each field may have:
+- `description`: what to record, shown to the ingestion agent;
+- `values`: the allowed values (case-insensitive);
+- `format: date`: a `YYYY-MM-DD` date;
+- `expected: true`: approvers see a missing value as a gap (`brainforge pending`, the GitHub reminder, Claude).
+
+Avoid `status` as a field name: OKF uses it for the concept's lifecycle (`draft`, `stable`, `deprecated`). The pm plugin uses `state`.
+
+## How the parts are used
+
+| Part | Effect |
+|---|---|
+| Types | For ingestion, BrainForge generates an instruction layer that lists the types, their groups and fields. After every agent run, a value outside `values` or a malformed date is an error, so the run is rolled back. `brain validate` reports the same, plus types filed in the wrong group. |
+| `instructions/<activity>.md` | An instruction layer after the framework defaults and before the brain's own `instructions.md`, so a brain can refine what a plugin says. The framework policy always comes first and can't be overridden. |
+| `procedures/*.md` | Listed and run like the brain's own (`brainforge run status-report`). A procedure in the brain's `procedures/` with the same name replaces the plugin's. |
+| `scripts/` | Run only by `brainforge plugin run <plugin> <script> [args…]`, in the brain root. A `.py` script runs with BrainForge's Python, so it can `import brainforge`; anything else must be executable. Exit codes pass through. |
+
+## Trust
+
+A plugin is code and instructions in the brain repository. Review it like any other change: its instructions steer the agents, and its scripts run with your permissions when you call them. Agents can't change plugins, because they may only write `knowledge/`.

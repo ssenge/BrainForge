@@ -9,7 +9,7 @@ BrainForge is a Python CLI that turns documents into an OKF v0.2 knowledge base 
 ```bash
 uv sync                                   # set up .venv (Python 3.12+)
 uv run pytest -q                          # whole suite, ~40 s, no LLM calls
-uv run ruff check src tests               # lint (line length 120)
+uv run ruff check src tests plugins       # lint (line length 120)
 uv run pyright                            # type check, must stay at 0 errors
 uv run brainforge --help                  # the CLI from source
 ```
@@ -32,6 +32,8 @@ Run all three checks before you commit. They are all clean on `main`.
 | `src/brainforge/procedures.py` | Markdown procedures → reports (pandoc for DOCX/PPTX/HTML/PDF) |
 | `src/brainforge/schedule.py` | `schedule tick`, plus generators for cron entries and GitHub workflows |
 | `src/brainforge/mcp_server.py` | MCP server (`list_brains`, `search`, `read`; with `--approvals` also `pending`, `approve`, `discard`) for Claude Desktop and others |
+| `src/brainforge/plugins.py` | Plugins: load, add (copy into the brain), types → instruction layer and field checks, scripts |
+| `plugins/` | Bundled plugins, e.g. `plugins/pm` (project management). Shipped in the wheel as `brainforge/bundled_plugins` |
 | `src/brainforge/integrations.py` | Agent skill install, Obsidian vault config |
 | `src/brainforge/data/` | All prompts and templates: `policy.md` (non-overridable), `ingestion.md`, `query.md`, `reporting.md`, `init/`, `workflows/`, `skills/` |
 | `tests/` | pytest; `fake_agent.py` is a deterministic stand-in for the agent CLI |
@@ -48,6 +50,7 @@ Run all three checks before you commit. They are all clean on `main`.
 - **BrainForge never handles credentials.** Agent CLIs log themselves in. Don't read, store, log or pass API keys.
 - **Agent isolation:** Claude Code runs with `--bare` (API key) or `--setting-sources "" --strict-mcp-config` (subscription), and with file tools only. Keep it that way.
 - **OKF v0.2 with relative links.** Unknown frontmatter keys must survive a round trip. `index.md` and `log.md` are generated; never edit them by hand or let the agent edit them.
+- **The core stays domain-neutral.** Domain types, rules and reports (project management, …) belong in a plugin under `plugins/`, not in `data/*.md` or `okf.py`.
 - **Phase B seams:** `parent` and `children` in `brain.yaml`, and hierarchy scopes in procedures, are deliberately rejected with "not supported yet". Don't half-implement them.
 
 ## Conventions

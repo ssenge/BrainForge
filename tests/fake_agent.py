@@ -77,6 +77,8 @@ def ingest() -> None:
         c.body = "# Statements\n\n" + "\n".join(statements) + "\n\n" + notes
         if mode == "self-approve":
             c.meta.update(approval="approved", audience="client")
+        if mode == "bad-field" and kind == "Milestone":  # a value the pm plugin doesn't allow
+            c.meta["state"] = "someday"
         okf.write(c)
     print("ingested")
 

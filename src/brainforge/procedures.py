@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from cronsim import CronSim, CronSimError
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-from brainforge import agents, approval, gitops, okf
+from brainforge import agents, approval, gitops, okf, plugins
 from brainforge.brain import AgentConfig, Brain, Layer, blob_hash, instruction_layers, render_layers
 from brainforge.ingest import require_clean
 
@@ -108,12 +108,17 @@ def load(path: Path) -> Procedure:
 
 
 def load_all(brain: Brain) -> tuple[list[Procedure], list[okf.Issue]]:
+    """The brain's procedures, then those of its plugins; a brain procedure overrides a plugin's by name."""
     procs, issues = [], []
-    for path in sorted(brain.procedures.glob("*.md")):
+    own = sorted(brain.procedures.glob("*.md"))
+    for path in own + [p for plugin in plugins.installed(brain) for p in plugin.files("procedures", "*.md")]:
         try:
-            procs.append(load(path))
+            proc = load(path)
         except ProcedureError as exc:
             issues.append(okf.Issue("error", brain.rel(path), str(exc)))
+            continue
+        if path in own or not any(p.name == proc.name and p.path in own for p in procs):
+            procs.append(proc)
     seen: dict[str, Procedure] = {}
     for p in procs:
         if p.name in seen:

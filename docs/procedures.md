@@ -1,6 +1,6 @@
 # Procedures and reports
 
-A procedure is a Markdown file in `procedures/`: YAML frontmatter configures it, and the body holds instructions for the reporting agent.
+A procedure is a Markdown file in `procedures/`: YAML frontmatter configures it, and the body holds instructions for the reporting agent. [Plugins](plugins.md) can bring procedures too, in `plugins/<name>/procedures/`; one in the brain's `procedures/` with the same name replaces the plugin's.
 
 ```markdown
 ---

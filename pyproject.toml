@@ -26,6 +26,9 @@ dev = ["pytest>=8", "ruff>=0.6", "pyright>=1.1.380"]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.build.targets.wheel.force-include]
+"plugins" = "brainforge/bundled_plugins"  # plugins/ stays separate in the repo, but ships with the package
+
 [tool.ruff]
 line-length = 120
 
@@ -34,7 +37,7 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 ignore = ["E501"]
 
 [tool.pyright]
-include = ["src"]
+include = ["src", "plugins"]
 pythonVersion = "3.12"
 
 [tool.pytest.ini_options]

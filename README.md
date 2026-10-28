@@ -30,6 +30,7 @@ BrainForge turns documents into a structured, versioned knowledge base, called a
 | **Secure by design** | Documents are treated as untrusted data, which defends against prompt injection. Agents get least-privilege tools (files only, no shell, no network) and run isolated from personal agent configs. An `allowed` list restricts which providers see the data. BrainForge never force-pushes. |
 | **Human in the loop, decentralized** | Everything the agent extracts arrives as *pending*. Each team member approves or discards their own items, routed by owner, from their own machine; a scanner shows who still has to act before a report. Every decision is a commit by the person who made it. |
 | **Audiences** | Each brain defines its own audiences, such as `client` / `internal`. A report for an audience sees only approved knowledge meant for it, enforced by code rather than by prompt. |
+| **Plugins** | The core is domain-neutral. Plugins add types with checked fields, instructions, reports and scripts for a domain. The bundled `pm` plugin covers project management: milestones, decisions, actions and a RAID log. See [docs/plugins.md](docs/plugins.md). |
 | **Agent skills and MCP** | One command installs a Claude Code or Codex skill, and `brainforge mcp` serves brains to Claude Desktop or any MCP client, read-only unless you let it record your approvals. See [Ask your brain](#ask-your-brain-from-claude-desktop-or-any-agent). |
 | **Knowledge graph** | Open the brain as an Obsidian vault, with a graph view colored by concept type. |
 | **Hierarchical and federated** *(roadmap)* | Brains form a tree across repositories, with instruction inheritance and federated, permission-aware queries. See the [Roadmap](#roadmap-a-hierarchy-of-brains). |
@@ -67,8 +68,8 @@ Either way, you then ask questions from Claude Desktop, Claude Code or Codex; se
 ### 1. Local: everything on your machine
 
 ```bash
-# Create a brain: a new Git repository with the standard layout
-brainforge init client-a-project-1 --id client-a/project-1 --name "Client A – Project 1"
+# Create a brain: a new Git repository with the standard layout, plus the project-management plugin
+brainforge init client-a-project-1 --id client-a/project-1 --name "Client A – Project 1" --plugin pm
 cd client-a-project-1
 
 # Ingest documents. Claude Code runs here with your login; each document becomes one commit
@@ -81,8 +82,9 @@ git log --stat -1
 brainforge knowledge search --type Milestone
 brainforge knowledge query "When does integration testing start?"
 
-# Write a report, following procedures/weekly-report.md
-brainforge run weekly-report
+# Write a report: the plugin's status report, or the generic weekly summary in procedures/weekly-report.md
+brainforge run status-report
+brainforge plugin run pm overdue      # actions and milestones past their date
 ```
 
 - The document text goes only to your AI provider, through your agent CLI. Everything else stays on your machine.
@@ -99,6 +101,7 @@ client-a-project-1/
 ├── archive/<sha12>/    originals, after successful ingestion
 ├── knowledge/          the OKF bundle (index.md and log.md are generated)
 ├── procedures/         Markdown procedures, e.g. weekly-report.md
+├── plugins/pm/         with --plugin pm: types, instructions, status report, scripts
 ├── templates/          reference.docx / corporate.pptx for rendered reports
 └── reports/            generated reports
 ```
@@ -109,7 +112,7 @@ One-time setup. You need the [GitHub CLI](https://cli.github.com) (`gh`):
 
 ```bash
 # A brain in a private repository
-brainforge init client-a-project-1 --id client-a/project-1 && cd client-a-project-1
+brainforge init client-a-project-1 --id client-a/project-1 --plugin pm && cd client-a-project-1
 gh repo create client-a-project-1 --private --source . --push
 
 # Workflows: inbox ingestion, approvals (when team members have a `github` login), procedures
@@ -315,6 +318,7 @@ Both entry paths, local and GitHub, run the same pipeline:
 |---|---|
 | Framework policy, which cannot be overridden | built in |
 | Framework defaults for ingestion, query and reporting | built in |
+| Plugins: generated type descriptions, then their instructions | `plugins/<name>/plugin.yaml`, `plugins/<name>/instructions/<activity>.md` |
 | Brain instructions | `instructions.md`, `instructions/<activity>.md` |
 | Commit trailer, for every document in that commit | `Ingest-Note: Focus on milestone changes` |
 | Sidecar, for one document | `inbox/minutes.pdf.sidecar.md` |
@@ -431,6 +435,7 @@ With `adapter: command`, any program works. It receives the prompt on stdin, run
 | `schedule install --provider cron\|github-actions` | Install the scheduler |
 | `ci install` | GitHub Actions workflows for inbox ingestion and, with `github` logins in the team, approvals (`--remind CRON`) |
 | `ci remind`, `ci decide --author LOGIN` | Used by the approvals workflow: the reminder text; apply a comment's decisions |
+| `plugin add NAME\|PATH`, `plugin list`, `plugin run PLUGIN SCRIPT [ARGS…]` | Add a plugin to the brain (`init --plugin NAME` does it at creation), list plugins, run a plugin script |
 | `skills install claude\|codex [--user]` | Agent skill that wraps the CLI |
 | `workspace open` | Open the brain as an Obsidian vault |
 | `mcp [BRAIN_DIR…]` | Serve one or more brains over MCP, for Claude Desktop and other MCP clients; read-only unless `--approvals` |
@@ -554,6 +559,7 @@ Further out:
 - [Knowledge profile](docs/knowledge-profile.md): how BrainForge uses OKF.
 - [Brain manifest](docs/brain-manifest.md)
 - [Procedures and reports](docs/procedures.md)
+- [Plugins](docs/plugins.md), and the bundled [pm plugin](plugins/pm/README.md)
 - [Automation: GitHub Actions and cron](docs/automation.md)
 - [Security model](docs/security.md)
 
@@ -562,7 +568,7 @@ Further out:
 ```bash
 uv sync
 uv run pytest            # uses a deterministic fake agent; no LLM calls
-uv run ruff check src tests && uv run pyright
+uv run ruff check src tests plugins && uv run pyright
 ```
 
 ## License

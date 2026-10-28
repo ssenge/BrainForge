@@ -23,10 +23,6 @@ GROUP_DESCRIPTIONS = {
     "sources": "Ingested source documents and their provenance.",
     "entities": "People, organizations, systems and other named things.",
     "topics": "Subject-matter concepts.",
-    "decisions": "Decisions that were explicitly made.",
-    "milestones": "Planned and achieved milestones.",
-    "risks": "Explicitly documented risks and issues.",
-    "actions": "Action items and their owners.",
 }
 
 LINK_RE = re.compile(r"(?<!!)\[[^\]]*\]\(([^)\s]+)\)")

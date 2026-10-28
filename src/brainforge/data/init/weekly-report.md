@@ -1,7 +1,7 @@
 ---
 name: weekly-report
 version: 1
-description: Weekly status report built from this brain's knowledge.
+description: Weekly summary of what changed in this brain's knowledge.
 knowledge:
   self: true
 output:
@@ -22,17 +22,15 @@ Summarize what is new or changed in this brain since the previous report.
 
 1. Read the previous report, if one is given.
 2. Go through the concepts that changed since then, and any other relevant knowledge.
-3. Summarize progress, milestone changes, risks, decisions and next steps.
+3. Summarize what is new, what changed and what is contradictory or still open.
 4. Cite every statement. Name missing information instead of guessing.
 
 ## Structure
 
-- Executive Summary
-- Progress
-- Milestones
-- Risks and Issues
-- Decisions
-- Next Steps
+- Summary
+- New
+- Changed
+- Conflicts and open questions
 
 ## Style
 

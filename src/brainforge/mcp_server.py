@@ -26,7 +26,7 @@ GUIDE = """\
 You are connected to BrainForge brains: Git-versioned knowledge bases in Open Knowledge Format (Markdown + YAML).
 Use `list_brains` to pick the brain (match the user's wording to its id/name) and to get its instructions,
 `search` to find concepts, and `read` to open them. Start with `knowledge/index.md` when browsing.
-For status questions, read the latest report (from `list_brains`) and the milestone, risk, decision and action concepts.
+For status questions, start with the latest report from `list_brains`.
 Search results carry a `url` that opens the concept in Obsidian: cite concepts as markdown links to it, e.g. [Go-live](url).
 `approval: pending` means no person has approved the concept yet: say so when an answer rests on it.
 
@@ -170,7 +170,7 @@ def build(roots: list[Brain], pull: bool = True, approvals: bool = False) -> MCP
     def search_tool(query: str = "", brain: str | None = None, type: str | None = None,
                     tag: str | None = None, limit: int = 20) -> list[dict[str, Any]]:
         """Search concepts by words (empty query lists all), optionally in one brain and filtered by OKF type
-        (e.g. Milestone, Risk, Decision, Action Item, Source Document) or tag. Returns paths for `read`."""
+        (e.g. Topic, Person, Source Document, or a plugin type such as Risk) or tag. Returns paths for `read`."""
         return search(brains, query, brain, type, tag, limit)
 
     @server.tool(name="read", annotations=READ_ONLY)

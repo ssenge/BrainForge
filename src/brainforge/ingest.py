@@ -11,7 +11,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
-from brainforge import agents, approval, gitops, okf, parsers
+from brainforge import agents, approval, gitops, okf, parsers, plugins
 from brainforge.brain import (
     AgentConfig,
     Brain,
@@ -125,8 +125,10 @@ def _check_changes(brain: Brain, source: Path, baseline: set[str]) -> tuple[list
         else:
             gitops.git(root, "restore", "--source=HEAD", "--staged", "--worktree", "--", p)
 
+    known = plugins.types(brain)
     for p in [source_rel, *created, *updated]:
         errors += [str(i) for i in okf.validate_concept(root / p, bundle) if i.level == "error"]
+        errors += [str(i) for i in plugins.check(brain, root / p, known) if i.level == "error"]
     for p in created + updated:
         try:
             concept = okf.read(root / p)

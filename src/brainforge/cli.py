@@ -12,7 +12,19 @@ from typing import Annotated, Any
 import typer
 from typer.exceptions import TyperException
 
-from brainforge import agents, approval, gitops, ingest, integrations, okf, parsers, procedures, query, schedule
+from brainforge import (
+    agents,
+    approval,
+    gitops,
+    ingest,
+    integrations,
+    okf,
+    parsers,
+    plugins,
+    procedures,
+    query,
+    schedule,
+)
 from brainforge import brain as brain_mod
 from brainforge.brain import Brain, BrainError
 
@@ -25,10 +37,11 @@ procedures_app = typer.Typer(no_args_is_help=True, help="List and validate proce
 schedule_app = typer.Typer(no_args_is_help=True, help="Run scheduled procedures (cron / GitHub Actions).")
 ci_app = typer.Typer(no_args_is_help=True, help="GitHub Actions integration.")
 skills_app = typer.Typer(no_args_is_help=True, help="Install BrainForge skills for coding agents.")
+plugin_app = typer.Typer(no_args_is_help=True, help="Plugins: domain types, instructions, procedures and scripts.")
 workspace_app = typer.Typer(no_args_is_help=True, help="Open the brain in Obsidian.")
 for sub, name in [(brain_app, "brain"), (knowledge_app, "knowledge"), (inbox_app, "inbox"),
                   (procedures_app, "procedures"), (schedule_app, "schedule"),
-                  (ci_app, "ci"), (skills_app, "skills"), (workspace_app, "workspace")]:
+                  (ci_app, "ci"), (skills_app, "skills"), (workspace_app, "workspace"), (plugin_app, "plugin")]:
     app.add_typer(sub, name=name)
 
 STATE: dict[str, Any] = {"brain": None, "json": False}
@@ -82,10 +95,15 @@ def init(
     name: Annotated[str | None, typer.Option(help="Display name.")] = None,
     brain_id: Annotated[str | None, typer.Option("--id", help="Stable brain id (default: directory name).")] = None,
     agent: Annotated[str, typer.Option(help="Default agent adapter: claude, codex, command.")] = "claude",
+    plugin: Annotated[list[str] | None, typer.Option("--plugin", help="Add a plugin, e.g. pm (repeatable).")] = None,
 ) -> None:
     """Create a new brain (directory layout, brain.yaml, empty OKF bundle, git repo)."""
     b = brain_mod.init(directory, name, brain_id, agent)
-    emit({"id": b.id, "root": str(b.root)}, f"Initialized brain '{b.id}' in {b.root}")
+    added = [plugins.add(b, p) for p in plugin or []]
+    if added:
+        gitops.commit(b.root, "brainforge: add plugin " + ", ".join(p.name for p in added), ["plugins"])
+    emit({"id": b.id, "root": str(b.root), "plugins": [p.name for p in added]},
+         f"Initialized brain '{b.id}' in {b.root}" + "".join(f" with plugin {p.name}" for p in added))
 
 
 @brain_app.command("show")
@@ -112,6 +130,8 @@ def brain_validate() -> None:
     issues = brain_mod.check_layout(b)
     issues += [okf.Issue(i.level, f"knowledge/{i.path}", i.message) for i in okf.validate_bundle(b.knowledge)]
     issues += procedures.load_all(b)[1]
+    known = plugins.types(b)
+    issues += [i for p in okf.concept_files(b.knowledge) for i in plugins.check(b, p, known)]
     issues += [okf.Issue("warning", b.rel(p), "sidecar without a matching document") for p in ingest.inbox_documents(b)[1]]
     levels = b.manifest.audiences
     issues += [okf.Issue("error", b.rel(c.path), f"audience '{c.meta['audience']}' is not one of {levels}")
@@ -248,7 +268,7 @@ ItemsArg = Annotated[list[str], typer.Argument(help="Concept ids or paths, e.g. 
 
 def _item_line(d: dict) -> str:
     extra = [f"owner: {d['owner']}" if d["owner"] else "", f"from {d['source']}" if d["source"] else "",
-             f"changed since {d['since'][:8]}" if d["since"] else ""]
+             f"changed since {d['since'][:8]}" if d["since"] else "", f"missing {', '.join(d['gaps'])}" if d["gaps"] else ""]
     return f"{'~' if d['since'] else '+'} {d['id']}  [{d['type']}] {d['title']}" + (
         f"  ({', '.join(e for e in extra if e)})" if any(extra) else "")
 
@@ -470,6 +490,44 @@ def ci_decide(author: Annotated[str, typer.Option(help="GitHub login of the pers
     rest = approval.reminder(b, _repo_url(), only=member)
     typer.echo("\n".join(lines) + ("\n\nStill waiting for you:\n" + rest if rest else "\n\nNothing else waits for you."))
     raise typer.Exit(0 if not failed else 1 if failed == len(commands) else 3)
+
+
+# --- plugins -----------------------------------------------------------------------------------
+
+@plugin_app.command("add")
+def plugin_add(source: Annotated[str, typer.Argument(help="A bundled plugin name (e.g. pm) or a plugin folder.")]) -> None:
+    """Copy a plugin into the brain's plugins/ folder (again: update it). Commit it to share it."""
+    b = current()
+    p = plugins.add(b, source)
+    parts = [f"types: {', '.join(t.type for t in p.types)}" if p.types else "",
+             f"procedures: {', '.join(f.stem for f in p.files('procedures', '*.md'))}" if p.files("procedures") else "",
+             f"scripts: {', '.join(f.stem for f in p.files('scripts'))}" if p.files("scripts") else ""]
+    emit({"plugin": p.name, "version": p.version, "path": b.rel(p.path)},
+         f"Added plugin {p.name} v{p.version} in {b.rel(p.path)}/ ({'; '.join(x for x in parts if x)}).\n"
+         f"Commit it: git add plugins && git commit -m \"plugin: {p.name}\"")
+
+
+@plugin_app.command("list")
+def plugin_list() -> None:
+    """Plugins in this brain, and those that ship with BrainForge."""
+    try:
+        here = plugins.installed(current())
+    except BrainError:
+        here = []
+    names = {p.name for p in here}
+    rows = [(p, "installed") for p in here] + [(p, "available") for p in plugins.available() if p.name not in names]
+    emit([{"name": p.name, "version": p.version, "status": s, "description": p.description} for p, s in rows],
+         "\n".join(f"{p.name} v{p.version} ({s}): {p.description}" for p, s in rows) or "No plugins.")
+
+
+@plugin_app.command("run", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def plugin_run(
+    plugin: Annotated[str, typer.Argument(help="Plugin name.")],
+    script: Annotated[str, typer.Argument(help="Script in the plugin's scripts/ folder.")],
+    args: Annotated[list[str] | None, typer.Argument(help="Arguments for the script.")] = None,
+) -> None:
+    """Run a plugin script in the brain root."""
+    raise typer.Exit(plugins.run_script(current(), plugin, script, args or []))
 
 
 # --- integrations ------------------------------------------------------------------------------
