@@ -37,6 +37,7 @@ BrainForge processes confidential documents with LLM agents. This document descr
 - A plugin lives in the brain repository (`plugins/<name>/`), so it is reviewed and versioned like everything else. Its instructions come after the framework policy, which they can't override.
 - Plugin scripts run only when someone calls `brainforge plugin run`, with that person's permissions; nothing runs them automatically. Treat them like any code you run.
 - Agents can't change plugins: the post-run check allows changes only in `knowledge/`.
+- A plugin from a git URL is someone else's instructions and scripts. `plugin add` only copies it; read it (`git diff`) before you commit it.
 
 ## Data leaves your machine only through the agent you chose
 

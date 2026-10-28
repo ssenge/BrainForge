@@ -17,6 +17,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Literal
@@ -24,11 +25,12 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from brainforge import okf
+from brainforge import gitops, okf
 from brainforge.brain import Brain, BrainError, Layer, blob_hash
 
 NAME_RE = r"^[a-z0-9]+(-[a-z0-9]+)*$"
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+GIT_URL_RE = re.compile(r"^(https?://|ssh://|git@|file://)")
 
 
 class FieldDef(BaseModel):
@@ -60,12 +62,16 @@ class Plugin(BaseModel):
         return sorted(p for p in (self.path / sub).glob(pattern) if p.is_file() and not p.name.startswith("."))
 
 
-def load(path: Path) -> Plugin:
+def _read(path: Path) -> Plugin:
     try:
         data = yaml.safe_load((path / "plugin.yaml").read_text(encoding="utf-8")) or {}
-        plugin = Plugin.model_validate({**data, "path": path})
+        return Plugin.model_validate({**data, "path": path})
     except (OSError, yaml.YAMLError, ValidationError) as exc:
         raise BrainError(f"invalid plugin {path.name}: {exc}") from exc
+
+
+def load(path: Path) -> Plugin:
+    plugin = _read(path)
     if plugin.name != path.name:
         raise BrainError(f"plugin folder {path.name} holds plugin '{plugin.name}'; the names must match")
     return plugin
@@ -88,14 +94,30 @@ def available() -> list[Plugin]:
 
 
 def add(brain: Brain, source: str) -> Plugin:
-    """Copy a bundled plugin (by name) or a plugin folder into the brain, replacing an older copy."""
+    """Copy a plugin into the brain, replacing an older copy. `source`: a bundled name, a plugin folder, or a git
+    URL, with `#<folder>` for a plugin inside a larger repository (`https://github.com/o/r.git#plugins/pm`)."""
+    if GIT_URL_RE.match(source):
+        url, _, sub = source.partition("#")
+        with tempfile.TemporaryDirectory() as tmp:
+            try:  # ponytail: default branch only; add `@ref` when someone needs to pin a plugin version
+                gitops.git(Path(tmp), "clone", "-q", "--depth", "1", url, "repo")
+            except gitops.GitError as exc:
+                raise BrainError(f"cannot clone {url}: {exc}") from exc
+            folder = Path(tmp, "repo", sub)
+            if not (folder / "plugin.yaml").is_file():
+                raise BrainError(f"no plugin.yaml in {source}; name the plugin's folder after '#'")
+            return _copy(brain, folder)
     folder = Path(source).expanduser()
     if not (folder / "plugin.yaml").is_file():
         folder = next((p.path for p in available() if p.name == source), None)  # type: ignore[assignment]
         if folder is None:
             names = ", ".join(p.name for p in available()) or "none"
-            raise BrainError(f"no plugin '{source}': give a plugin folder or a bundled name ({names})")
-    plugin = load(folder)
+            raise BrainError(f"no plugin '{source}': give a bundled name ({names}), a plugin folder or a git URL")
+    return _copy(brain, folder)
+
+
+def _copy(brain: Brain, folder: Path) -> Plugin:
+    plugin = _read(folder)  # the source folder may have any name; the copy is named after the plugin
     target = brain.root / "plugins" / plugin.name
     if target.resolve() != folder.resolve():
         shutil.rmtree(target, ignore_errors=True)

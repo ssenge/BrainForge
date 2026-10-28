@@ -28,9 +28,28 @@ def test_add_list_and_init(brain, tmp_path, run_cli):
     assert code == 0 and "with plugin pm" in out
     assert [p.name for p in plugins.installed(brain_mod.load(tmp_path / "proj"))] == ["pm"]
 
-    write(tmp_path / "bad/plugin.yaml", "name: other\n")
-    with pytest.raises(BrainError, match="names must match"):
-        plugins.add(brain, str(tmp_path / "bad"))
+    write(tmp_path / "bad/plugins/other/plugin.yaml", "name: Not A Name\n")
+    with pytest.raises(BrainError, match="invalid plugin other"):
+        plugins.add(brain, str(tmp_path / "bad/plugins/other"))
+
+
+def test_add_from_a_git_url(brain, tmp_path):
+    repo = tmp_path / "brainforge-extras"  # a repository with a plugin at its root, and one in a subfolder
+    write(repo / "plugin.yaml", "name: crm\ndescription: Customers.\n")
+    write(repo / "plugins/hr/plugin.yaml", "name: hr\n")
+    write(repo / "plugins/hr/procedures/headcount.md", "---\nname: headcount\n---\nCount.\n")
+    gitops.git(tmp_path, "init", "-q", str(repo))
+    gitops.git(repo, "add", "-A")
+    gitops.git(repo, "commit", "-qm", "plugins")
+
+    assert plugins.add(brain, f"file://{repo}").name == "crm"
+    assert plugins.add(brain, f"file://{repo}#plugins/hr").files("procedures")[0].name == "headcount.md"
+    assert [p.name for p in plugins.installed(brain)] == ["crm", "hr"]
+    assert not (brain.root / "plugins/crm/.git").exists()
+    with pytest.raises(BrainError, match="name the plugin's folder"):
+        plugins.add(brain, f"file://{repo}#plugins")
+    with pytest.raises(BrainError, match="cannot clone"):
+        plugins.add(brain, f"file://{tmp_path}/missing")
 
 
 def test_layers_and_procedures(pm):

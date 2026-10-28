@@ -513,7 +513,9 @@ def ci_decide(author: Annotated[str, typer.Option(help="GitHub login of the pers
 # --- plugins -----------------------------------------------------------------------------------
 
 @plugin_app.command("add")
-def plugin_add(source: Annotated[str, typer.Argument(help="A bundled plugin name (e.g. pm) or a plugin folder.")]) -> None:
+def plugin_add(source: Annotated[str, typer.Argument(
+        help="A bundled plugin name (e.g. pm), a plugin folder, or a git URL (URL#folder for a plugin inside a "
+             "repository).")]) -> None:
     """Copy a plugin into the brain's plugins/ folder (again: update it). Commit it to share it."""
     b = current()
     p = plugins.add(b, source)

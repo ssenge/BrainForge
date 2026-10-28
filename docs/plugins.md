@@ -5,6 +5,8 @@ The core of BrainForge is domain-neutral: entities, topics, sources, approvals, 
 ```bash
 brainforge plugin list                  # installed in this brain, and bundled ones
 brainforge plugin add pm                # a bundled plugin by name, or a path to a plugin folder
+brainforge plugin add https://github.com/acme/brainforge-crm.git            # a plugin repository
+brainforge plugin add https://github.com/acme/plugins.git#plugins/crm       # a plugin inside one
 git add plugins && git commit -m "plugin: pm"
 brainforge plugin run pm overdue        # a plugin script
 brainforge init my-project --plugin pm  # a new brain with plugins
@@ -13,7 +15,7 @@ brainforge init my-project --plugin pm  # a new brain with plugins
 `plugin add` copies the plugin into the brain's `plugins/<name>/`. The folder is the installation:
 - it is versioned with the brain, so CI and teammates need nothing extra;
 - you can adapt the copy for one brain;
-- `plugin add` again replaces the copy (review the change with `git diff`);
+- `plugin add` again replaces the copy (review the change with `git diff`); from a git URL, it takes the latest commit of the default branch;
 - deleting the folder removes the plugin.
 
 ## Layout

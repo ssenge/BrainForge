@@ -438,7 +438,7 @@ With `adapter: command`, any program works. It receives the prompt on stdin, run
 | `schedule install --provider cron\|github-actions` | Install the scheduler |
 | `ci install` | GitHub Actions workflows for inbox ingestion and, with `github` logins in the team, approvals (`--remind CRON`) |
 | `ci remind`, `ci decide --author LOGIN` | Used by the approvals workflow: the reminder text; apply a comment's decisions |
-| `plugin add NAME\|PATH`, `plugin list`, `plugin run PLUGIN SCRIPT [ARGS…]` | Add a plugin to the brain (`init --plugin NAME` does it at creation), list plugins, run a plugin script |
+| `plugin add NAME\|PATH\|GIT-URL`, `plugin list`, `plugin run PLUGIN SCRIPT [ARGS…]` | Add a plugin to the brain (`init --plugin NAME` does it at creation), list plugins, run a plugin script |
 | `skills install claude\|codex [--user]` | Agent skill that wraps the CLI |
 | `workspace open` | Open the brain as an Obsidian vault |
 | `mcp [BRAIN_DIR…]` | Serve one or more brains over MCP, for Claude Desktop and other MCP clients; read-only unless `--approvals` |
