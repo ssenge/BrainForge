@@ -6,7 +6,6 @@ import json
 import os
 import sys
 from collections import Counter
-from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -73,18 +72,6 @@ def wants_commit(b: Brain, no_commit: bool) -> bool:
 def wants_push(b: Brain, push: bool) -> bool:
     return push or b.manifest.git.push
 
-
-def publish(b: Brain, start: str | None) -> None:
-    """Push the commits made since `start`. If someone changed the same files meanwhile, undo them instead
-    of merging blindly, and pull: the run is idempotent, so running it again is safe."""
-    try:
-        gitops.push(b.root)
-    except gitops.Stale as exc:
-        if start:
-            gitops.git(b.root, "reset", "-q", "--keep", start)
-        gitops.git(b.root, "pull", "--ff-only", "-q", check=False)
-        raise gitops.Stale(exc.paths, f"{exc}; this run's commits were undone and the remote pulled, "
-                                      "so run it again") from None
 
 
 # --- init / brain ------------------------------------------------------------------------------
@@ -167,7 +154,7 @@ def ingest_cmd(
     outcomes = [ingest.ingest(b, f, cfg, instruction=instruction, force=force, dry_run=dry_run,
                               commit=wants_commit(b, no_commit)) for f in files]
     if push and any(o.commit for o in outcomes):
-        publish(b, start)
+        gitops.publish(b.root, start)
     raise typer.Exit(_report_outcomes(outcomes))
 
 
@@ -192,7 +179,7 @@ def inbox_process(
     for p in orphans:
         typer.echo(f"warning: {b.rel(p)}: sidecar without a matching document", err=True)
     if push and gitops.head(b.root):
-        publish(b, start)
+        gitops.publish(b.root, start)
     raise typer.Exit(_report_outcomes(outcomes))
 
 
@@ -276,14 +263,9 @@ def _team_lines(b: Brain, status: dict) -> list[str]:
     return lines
 
 
-def _sync(b: Brain, guard: list[str] | None = None) -> None:
-    """Pull first, so people decide on what the team sees. Offline is fine: the push guard catches it later."""
-    try:
-        gitops.pull(b.root, guard)
-    except gitops.Stale:
-        raise
-    except gitops.GitError as exc:
-        typer.echo(f"warning: pull failed, using the local state: {exc}", err=True)
+def _sync(b: Brain) -> None:
+    if warning := approval.sync(b):
+        typer.echo(f"warning: {warning}", err=True)
 
 
 @app.command("pending")
@@ -315,44 +297,13 @@ def pending_cmd(
     raise typer.Exit(1 if check and items else 0)
 
 
-def _decide(b: Brain, verb: str, refs: list[str], act: Callable[[], list[tuple[Path, str]]], *,
-            no_commit: bool, push: bool, author: str | None = None) -> dict[str, Any]:
-    """Pull, decide, commit, push. Stops when an item changed since the person looked at it, so nobody
-    approves content they haven't seen; a decision that lost that race is undone again."""
-    try:
-        _sync(b, [approval.rel_of(b, r) for r in refs if "@" not in r])  # a pinned version is checked exactly
-        start = gitops.head(b.root)
-        done = act()
-        sha = None
-        if wants_commit(b, no_commit):
-            ids = [okf.concept_id(b.knowledge, p) for p, _ in done]
-            sha = gitops.commit(b.root, f"{verb}: {', '.join(ids[:3])}{' …' if len(ids) > 3 else ''}\n\n"
-                                + "\n".join(f"- {line}" for _, line in done), [b.rel(p) for p, _ in done], author)
-            if wants_push(b, push):
-                publish(b, start)
-    except gitops.Stale as exc:
-        ids = ", ".join(okf.concept_id(b.knowledge, b.root / p) for p in exc.paths)
-        raise gitops.GitError(f"{ids} changed since you looked, so nothing was decided; "
-                              "check again with `brainforge pending`") from None
-    return {"items": [b.rel(p) for p, _ in done], "lines": [line for _, line in done], "commit": sha}
-
-
-def _emit_decision(result: dict[str, Any]) -> None:
+def _decision(b: Brain, verb: str, items: list[str], audience: str | None, no_commit: bool, push: bool) -> None:
+    result = approval.decide(b, verb, items, audience=audience, commit=wants_commit(b, no_commit),
+                             push=wants_push(b, push))
+    for warning in result["warnings"]:
+        typer.echo(f"warning: {warning}", err=True)
     sha = result["commit"]
     emit(result, "\n".join(result["lines"]) + (f"\n[{sha[:8]}]" if sha else ""))
-
-
-def _approve(b: Brain, refs: list[str], audience: str | None, by: str | None = None) -> Callable[[], list[tuple[Path, str]]]:
-    def line(p: Path) -> str:
-        hidden = approval.hidden_links(b, p, audience) if audience else []
-        return (f"approved {okf.concept_id(b.knowledge, p)}" + (f" for {audience}" if audience else "")
-                + (f" (links {audience} can't see, left out for {audience}: {', '.join(hidden)})" if hidden else ""))
-
-    return lambda: [(p, line(p)) for p in approval.approve(b, refs, audience, by)]
-
-
-def _discard(b: Brain, refs: list[str]) -> Callable[[], list[tuple[Path, str]]]:
-    return lambda: [(p, f"{okf.concept_id(b.knowledge, p)}: {what}") for p, what in approval.discard(b, refs)]
 
 
 @app.command("approve")
@@ -363,15 +314,13 @@ def approve_cmd(
     push: PushOpt = False,
 ) -> None:
     """Approve pending knowledge (records you in OKF `verified`)."""
-    b = current()
-    _emit_decision(_decide(b, "approve", items, _approve(b, items, audience), no_commit=no_commit, push=push))
+    _decision(current(), "approve", items, audience, no_commit, push)
 
 
 @app.command("discard")
 def discard_cmd(items: ItemsArg, no_commit: NoCommitOpt = False, push: PushOpt = False) -> None:
     """Discard pending knowledge: a change is undone, a new item is kept only as a hidden tombstone."""
-    b = current()
-    _emit_decision(_decide(b, "discard", items, _discard(b, items), no_commit=no_commit, push=push))
+    _decision(current(), "discard", items, None, no_commit, push)
 
 
 # --- procedures --------------------------------------------------------------------------------
@@ -420,7 +369,7 @@ def run_cmd(
     result = procedures.run(b, proc, cfg, instruction=instruction, force=force, commit=wants_commit(b, no_commit),
                             allow_pending=allow_pending)
     if push and result["commit"]:
-        publish(b, start)
+        gitops.publish(b.root, start)
     text = f"Wrote {', '.join(result['outputs'])} ({result['cited']} cited concepts)"
     emit(result, text + "".join(f"\nwarning: broken citation {c}" for c in result["broken_citations"]))
 
@@ -441,7 +390,7 @@ def schedule_tick(
     start = gitops.head(b.root)
     results = schedule.tick(b, only=procedure, commit=wants_commit(b, no_commit))
     if push and any(r.get("commit") for r in results):
-        publish(b, start)
+        gitops.publish(b.root, start)
     emit(results, "\n".join(f"{r['procedure']}: {r['status']}" + (f" -> {r['report']}" if r.get("report") else "")
                             + (f" ({r['message']})" if r.get("message") else "") for r in results)
          or "No scheduled procedures.")
@@ -510,9 +459,9 @@ def ci_decide(author: Annotated[str, typer.Option(help="GitHub login of the pers
     email = member.email or f"{member.github}@users.noreply.github.com"
     baseline, lines, failed = gitops.untracked(b.root), [], 0
     for verb, refs, audience in commands:
-        act = _approve(b, refs, audience, by=email) if verb == "approve" else _discard(b, refs)
         try:
-            result = _decide(b, verb, refs, act, no_commit=False, push=True, author=f"{member.name} <{email}>")
+            result = approval.decide(b, verb, refs, audience=audience, by=email, author=f"{member.name} <{email}>",
+                                     push=True)
             lines += [f"- {line} ({result['commit'][:7]})" for line in result["lines"]]
         except (BrainError, gitops.GitError) as exc:
             gitops.rollback(b.root, baseline)
@@ -552,14 +501,17 @@ def workspace_open(
 def mcp(
     brains: Annotated[list[Path] | None, typer.Argument(help="Brain directories (default: the current brain).")] = None,
     pull: Annotated[bool, typer.Option("--pull/--no-pull", help="git pull --ff-only every 5 minutes.")] = True,
+    approvals: Annotated[bool, typer.Option("--approvals", help="Also let the client record your decisions "
+                                            "(pending, approve, discard): commits by your git identity, "
+                                            "pushed when the brain has a remote.")] = False,
 ) -> None:
-    """Serve brains read-only over MCP (stdio) for Claude Desktop and other MCP clients."""
+    """Serve brains over MCP (stdio) for Claude Desktop and other MCP clients; read-only unless --approvals."""
     from brainforge import mcp_server  # the MCP SDK is only needed here
 
     roots = [brain_mod.find(p) for p in brains] if brains else [current()]
     if len({b.id for b in roots}) < len(roots):
         raise BrainError("two brains share the same id")
-    mcp_server.serve(roots, pull)
+    mcp_server.serve(roots, pull, approvals)
 
 
 # --- entry point -------------------------------------------------------------------------------

@@ -30,7 +30,7 @@ BrainForge turns documents into a structured, versioned knowledge base, called a
 | **Secure by design** | Documents are treated as untrusted data, which defends against prompt injection. Agents get least-privilege tools (files only, no shell, no network) and run isolated from personal agent configs. An `allowed` list restricts which providers see the data. BrainForge never force-pushes. |
 | **Human in the loop, decentralized** | Everything the agent extracts arrives as *pending*. Each team member approves or discards their own items, routed by owner, from their own machine; a scanner shows who still has to act before a report. Every decision is a commit by the person who made it. |
 | **Audiences** | Each brain defines its own audiences, such as `client` / `internal`. A report for an audience sees only approved knowledge meant for it, enforced by code rather than by prompt. |
-| **Agent skills and MCP** | One command installs a Claude Code or Codex skill, and `brainforge mcp` serves brains read-only to Claude Desktop or any MCP client. See [Ask your brain](#ask-your-brain-from-claude-desktop-or-any-agent). |
+| **Agent skills and MCP** | One command installs a Claude Code or Codex skill, and `brainforge mcp` serves brains to Claude Desktop or any MCP client, read-only unless you let it record your approvals. See [Ask your brain](#ask-your-brain-from-claude-desktop-or-any-agent). |
 | **Knowledge graph** | Open the brain as an Obsidian vault, with a graph view colored by concept type. |
 | **Hierarchical and federated** *(roadmap)* | Brains form a tree across repositories, with instruction inheritance and federated, permission-aware queries. See the [Roadmap](#roadmap-a-hierarchy-of-brains). |
 
@@ -199,7 +199,7 @@ Claude navigates from `knowledge/index.md` and follows the links. This needs no 
 
 ### C. `brainforge mcp` (recommended)
 
-A read-only MCP server over stdio. Claude Desktop does the reasoning; BrainForge serves the knowledge deterministically, with no second agent run in between.
+An MCP server over stdio, read-only by default. Claude Desktop does the reasoning; BrainForge serves the knowledge deterministically, with no second agent run in between.
 
 **Setup for Claude Desktop:**
 
@@ -248,7 +248,18 @@ The server also passes BrainForge's query rules to Claude:
 
 For a status question, Claude reads the latest weekly report plus the milestone, risk and decision concepts, and answers with links to them.
 
+**Approving from Claude Desktop.** Add `"--approvals"` to the `args`. Then ask *"show my pending brain items"*, and Claude:
+1. lists your items as a short table, with links that open them in Obsidian and a summary of what changed;
+2. asks Approve, Approve for client, Discard or Not now, up to four items at a time;
+3. records only what you answered.
+
+| Tool (with `--approvals`) | What it does |
+|---|---|
+| `pending` | Your pending items (`scope: all` for everyone's). Each has a `ref` (`id@version`), a link, and for a changed item the diff against the approved version. |
+| `approve`, `discard` | Records a decision as your git identity (`git config user.email` in the clone), commits, and pushes when the brain has a remote. Only `ref` values from `pending` are accepted, so a decision on an item that changed since Claude showed it stops. |
+
 Options:
+- `--approvals` adds the three approval tools; without it, the server can't change anything.
 - `--no-pull` disables the automatic sync.
 - Without arguments, the server serves the brain in the current directory.
 - Pulling a private repository uses your normal git credentials (keychain or SSH agent).
@@ -422,7 +433,7 @@ With `adapter: command`, any program works. It receives the prompt on stdin, run
 | `ci remind`, `ci decide --author LOGIN` | Used by the approvals workflow: the reminder text; apply a comment's decisions |
 | `skills install claude\|codex [--user]` | Agent skill that wraps the CLI |
 | `workspace open` | Open the brain as an Obsidian vault |
-| `mcp [BRAIN_DIR…]` | Serve one or more brains read-only over MCP, for Claude Desktop and other MCP clients |
+| `mcp [BRAIN_DIR…]` | Serve one or more brains over MCP, for Claude Desktop and other MCP clients; read-only unless `--approvals` |
 
 Global options:
 - `--brain PATH`: by default the brain is found from the current directory upwards, the way git finds its repo.

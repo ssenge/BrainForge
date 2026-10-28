@@ -222,6 +222,53 @@ def discard(brain: Brain, refs: list[str]) -> list[tuple[Path, str]]:
     return done
 
 
+def sync(brain: Brain, guard: list[str] | None = None) -> str | None:
+    """Pull first, so people decide on what the team sees. Offline is fine (the push check catches
+    changes later): returns a warning instead. Raises Stale if the pull changed a `guard` path."""
+    try:
+        gitops.pull(brain.root, guard)
+    except gitops.Stale:
+        raise
+    except gitops.GitError as exc:
+        return f"pull failed, using the local state: {exc}"
+    return None
+
+
+def decide(brain: Brain, verb: str, refs: list[str], *, audience: str | None = None, by: str | None = None,
+           author: str | None = None, commit: bool = True, push: bool = False) -> dict[str, Any]:
+    """Pull, approve or discard, commit, push. Stops when an item changed since the person looked at it,
+    so nobody decides on content they haven't seen; a decision that loses that race is undone again.
+    `by` is recorded in `verified`, `author` on the commit (both default to the git user)."""
+    if verb not in ("approve", "discard"):
+        raise BrainError(f"unknown decision '{verb}'")
+    sha = None
+    try:
+        warning = sync(brain, [rel_of(brain, r) for r in refs if "@" not in r])  # pinned versions are checked exactly
+        start = gitops.head(brain.root)
+        if verb == "approve":
+            done = [(p, _approved_line(brain, p, audience)) for p in approve(brain, refs, audience, by)]
+        else:
+            done = [(p, f"{okf.concept_id(brain.knowledge, p)}: {what}") for p, what in discard(brain, refs)]
+        if commit:
+            ids = [okf.concept_id(brain.knowledge, p) for p, _ in done]
+            sha = gitops.commit(brain.root, f"{verb}: {', '.join(ids[:3])}{' …' if len(ids) > 3 else ''}\n\n"
+                                + "\n".join(f"- {line}" for _, line in done), [brain.rel(p) for p, _ in done], author)
+            if push:
+                gitops.publish(brain.root, start)
+    except gitops.Stale as exc:
+        ids = ", ".join(okf.concept_id(brain.knowledge, brain.root / p) for p in exc.paths)
+        raise gitops.GitError(f"{ids} changed since you looked, so nothing was decided; "
+                              "check again with `brainforge pending`") from None
+    return {"items": [brain.rel(p) for p, _ in done], "lines": [line for _, line in done], "commit": sha,
+            "warnings": [warning] if warning else []}
+
+
+def _approved_line(brain: Brain, path: Path, audience: str | None) -> str:
+    hidden = hidden_links(brain, path, audience) if audience else []
+    return (f"approved {okf.concept_id(brain.knowledge, path)}" + (f" for {audience}" if audience else "")
+            + (f" (links {audience} can't see, left out for {audience}: {', '.join(hidden)})" if hidden else ""))
+
+
 # --- GitHub comments ----------------------------------------------------------------------------
 
 COMMAND_RE = re.compile(r"^\s*`?\s*(approve|discard)\s+([^`\n]+)", re.I | re.M)

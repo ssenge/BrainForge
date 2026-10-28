@@ -1,7 +1,8 @@
-"""Read-only MCP server: lets a desktop agent (Claude Desktop, …) search and read brains.
+"""MCP server: lets a desktop agent (Claude Desktop, …) search and read brains.
 
 The calling agent does the reasoning. BrainForge only serves the knowledge, deterministically:
 no nested agent run, no writes except `git pull --ff-only` to pick up what CI ingested.
+With `approvals=True` (opt-in), it also records the user's own approve/discard decisions.
 """
 
 from __future__ import annotations
@@ -18,6 +19,8 @@ from brainforge.brain import Brain, data_text, instruction_layers
 PULL_EVERY = 300  # seconds between `git pull` per brain
 READABLE = ("knowledge", "reports")
 READ_ONLY = ToolAnnotations(read_only_hint=True, open_world_hint=False)
+DECIDE = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=False, open_world_hint=False)
+UNDO = ToolAnnotations(read_only_hint=False, destructive_hint=True, idempotent_hint=False, open_world_hint=False)
 
 GUIDE = """\
 You are connected to BrainForge brains: Git-versioned knowledge bases in Open Knowledge Format (Markdown + YAML).
@@ -26,6 +29,18 @@ Use `list_brains` to pick the brain (match the user's wording to its id/name) an
 For status questions, read the latest report (from `list_brains`) and the milestone, risk, decision and action concepts.
 Search results carry a `url` that opens the concept in Obsidian: cite concepts as markdown links to it, e.g. [Go-live](url).
 `approval: pending` means no person has approved the concept yet: say so when an answer rests on it.
+
+"""
+
+APPROVALS_GUIDE = """\
+Approvals are enabled: you record the user's own decisions on knowledge awaiting approval.
+1. Call `pending`. Show the items as one compact table, nothing more: | # | Item | What changed | Source |,
+   with Item as [title](url). For a changed item, summarize its `changes` diff in a few words.
+2. Ask about up to four items at a time, one short question each, and wait for the user's explicit answer:
+   Approve, Approve for <audience> (only if `list_brains` shows audiences), Discard, or Not now.
+3. Only then call `approve` or `discard` with the `ref` values exactly as `pending` returned them.
+   Never decide on your own or for someone else. If a decision fails because the item changed,
+   show the new version before asking again.
 
 """
 
@@ -73,6 +88,7 @@ def list_brains(brains: Brains) -> list[dict[str, Any]]:
             "concepts": len(okf.concept_files(b.knowledge)),
             "latest_reports": latest,
             "instructions": "\n\n".join(local),
+            "audiences": b.manifest.audiences,
             "commit": gitops.head(b.root),
             "sync_error": brains.sync_errors.get(b.id),
         })
@@ -110,9 +126,40 @@ def read(brains: Brains, path: str, brain: str | None = None) -> str:
     return target.read_text(encoding="utf-8")
 
 
-def build(roots: list[Brain], pull: bool = True) -> MCPServer:
+def pending(brains: Brains, brain: str | None = None, scope: str = "mine") -> list[dict[str, Any]]:
+    b = brains.get(brain)
+    if scope not in ("mine", "all"):
+        raise ValueError("scope must be 'mine' or 'all'")
+    if brains.pull and (warning := approval.sync(b)):
+        brains.sync_errors[b.id] = warning
+    who = None
+    if scope == "mine" and b.manifest.team and not (who := approval.me(b)):
+        raise ValueError(f"your git identity ({gitops.user(b.root) or 'not set'}) is not on this brain's team; "
+                         "use scope='all'")
+    items = []
+    for i in approval.pending_for(b, who):
+        d = i.as_dict(b)
+        d["ref"] = f"{d['id']}@{d['version']}"
+        if d["since"]:  # ponytail: truncated, an item diff is small unless the agent rewrote everything
+            d["changes"] = gitops.git(b.root, "diff", d["since"], "--", d["path"])[:6000]
+        items.append(d)
+    return items
+
+
+def decide(brains: Brains, verb: str, items: list[str], brain: str | None = None,
+           audience: str | None = None) -> dict[str, Any]:
+    """Approve or discard as the local git user; pushed when the brain has a remote."""
+    b = brains.get(brain)
+    if unpinned := [i for i in items if "@" not in i]:
+        raise ValueError(f"pass the `ref` values from `pending` (id@version), not: {', '.join(unpinned)}")
+    return approval.decide(b, verb, items, audience=audience, commit=b.manifest.git.commit,
+                           push=b.manifest.git.commit and gitops.has_upstream(b.root))
+
+
+def build(roots: list[Brain], pull: bool = True, approvals: bool = False) -> MCPServer:
     brains = Brains(roots, pull)
-    server = MCPServer("brainforge", version=__version__, instructions=GUIDE + data_text("query.md"))
+    guide = GUIDE + (APPROVALS_GUIDE if approvals else "")
+    server = MCPServer("brainforge", version=__version__, instructions=guide + data_text("query.md"))
 
     @server.tool(name="list_brains", annotations=READ_ONLY)
     def list_brains_tool() -> list[dict[str, Any]]:
@@ -132,8 +179,29 @@ def build(roots: list[Brain], pull: bool = True) -> MCPServer:
         `milestones/go-live`, `knowledge/index.md` or a report path from `list_brains`."""
         return read(brains, path, brain)
 
+    if not approvals:
+        return server
+
+    @server.tool(name="pending", annotations=READ_ONLY)
+    def pending_tool(brain: str | None = None, scope: str = "mine") -> list[dict[str, Any]]:
+        """Knowledge awaiting approval: the user's own items (scope 'mine') or everyone's ('all').
+        Each item has a `ref` for approve/discard, a `url` to link it, and for a changed item a `changes` diff."""
+        return pending(brains, brain, scope)
+
+    @server.tool(name="approve", annotations=DECIDE)
+    def approve_tool(items: list[str], brain: str | None = None, audience: str | None = None) -> dict[str, Any]:
+        """Record the user's approval. Call only after the user explicitly approved each item.
+        `items`: `ref` values from `pending`. `audience`: also set who may see them (from `list_brains`)."""
+        return decide(brains, "approve", items, brain, audience)
+
+    @server.tool(name="discard", annotations=UNDO)
+    def discard_tool(items: list[str], brain: str | None = None) -> dict[str, Any]:
+        """Record the user's decision to discard: a change to approved knowledge is undone, a new item is
+        hidden. Call only after the user explicitly said so. `items`: `ref` values from `pending`."""
+        return decide(brains, "discard", items, brain)
+
     return server
 
 
-def serve(roots: list[Brain], pull: bool = True) -> None:
-    build(roots, pull).run("stdio")
+def serve(roots: list[Brain], pull: bool = True, approvals: bool = False) -> None:
+    build(roots, pull, approvals).run("stdio")

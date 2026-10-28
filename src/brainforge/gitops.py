@@ -120,6 +120,19 @@ def push(root: Path, tries: int = 3) -> None:
     raise GitError(f"push rejected {tries} times in a row; try again")
 
 
+def publish(root: Path, start: str | None) -> None:
+    """Push the commits made since `start`. If someone changed the same files meanwhile, undo them instead
+    of merging blindly, and pull: BrainForge runs are idempotent, so running again is safe."""
+    try:
+        push(root)
+    except Stale as exc:
+        if start:
+            git(root, "reset", "-q", "--keep", start)
+        git(root, "pull", "--ff-only", "-q", check=False)
+        raise Stale(exc.paths, f"{exc}; this run's commits were undone and the remote pulled, "
+                               "so run it again") from None
+
+
 def show(root: Path, rev: str, path: str) -> str | None:
     out = subprocess.run(["git", "show", f"{rev}:{path}"], cwd=root, capture_output=True, text=True)
     return out.stdout if out.returncode == 0 else None

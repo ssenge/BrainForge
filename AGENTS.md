@@ -31,7 +31,7 @@ Run all three checks before you commit. They are all clean on `main`.
 | `src/brainforge/query.py` | Read-only question answering by an agent, with citation checks |
 | `src/brainforge/procedures.py` | Markdown procedures → reports (pandoc for DOCX/PPTX/HTML/PDF) |
 | `src/brainforge/schedule.py` | `schedule tick`, plus generators for cron entries and GitHub workflows |
-| `src/brainforge/mcp_server.py` | Read-only MCP server (`list_brains`, `search`, `read`) for Claude Desktop and others |
+| `src/brainforge/mcp_server.py` | MCP server (`list_brains`, `search`, `read`; with `--approvals` also `pending`, `approve`, `discard`) for Claude Desktop and others |
 | `src/brainforge/integrations.py` | Agent skill install, Obsidian vault config |
 | `src/brainforge/data/` | All prompts and templates: `policy.md` (non-overridable), `ingestion.md`, `query.md`, `reporting.md`, `init/`, `workflows/`, `skills/` |
 | `tests/` | pytest; `fake_agent.py` is a deterministic stand-in for the agent CLI |

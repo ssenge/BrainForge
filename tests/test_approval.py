@@ -7,7 +7,7 @@ import re
 import pytest
 from conftest import write
 
-from brainforge import agents, approval, cli, gitops, ingest, okf, procedures, query
+from brainforge import agents, approval, gitops, ingest, okf, procedures, query
 from brainforge import brain as brain_mod
 
 TEAM = """
@@ -174,7 +174,7 @@ def test_decisions_pull_push_and_stop_on_unseen_changes(team, tmp_path, run_cli)
     # Alice decides offline, Carol pushes first; Alice's push rebases onto it, since they touched different files.
     assert run_cli("--brain", team.root, "approve", f"milestones/go-live@{version}")[0] == 0
     assert run_cli("--brain", mate, "approve", "topics/quantum", "--push")[0] == 0
-    cli.publish(team, None)
+    gitops.publish(team.root, None)
     gitops.pull(mate)
     assert meta(brain_mod.load(mate), "milestones/go-live")["approval"] == "approved"
     assert meta(team, "topics/quantum")["approval"] == "approved"
@@ -193,7 +193,7 @@ def test_decisions_pull_push_and_stop_on_unseen_changes(team, tmp_path, run_cli)
     approval.discard(team, ["milestones/go-live"])
     gitops.commit(team.root, "discard", ["knowledge"])
     with pytest.raises(gitops.Stale, match="undone"):
-        cli.publish(team, start)
+        gitops.publish(team.root, start)
     assert meta(team, "milestones/go-live")["approval"] == "approved" and gitops.status(team.root) == []
 
 

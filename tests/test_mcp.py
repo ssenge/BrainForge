@@ -7,8 +7,8 @@ from conftest import write
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 
+from brainforge import agents, gitops, ingest, mcp_server, okf
 from brainforge import brain as brain_mod
-from brainforge import mcp_server
 
 MILESTONE = """---
 type: Milestone
@@ -63,11 +63,42 @@ def test_brain_is_required_when_ambiguous(brains):
         mcp_server.read(brains, "knowledge/index.md")
 
 
-def test_stdio_round_trip(brain):
+def test_approvals_record_the_users_decisions(brain, tmp_path):
+    gitops.git(brain.root, "config", "user.email", "dana@example.com")
+    doc = write(tmp_path / "minutes.md", "Milestone: Go-live = 2027-02-01\nTopic: Vendor\n")
+    assert ingest.ingest(brain, doc, agents.resolve(brain)).status == "ingested"
+    brains = mcp_server.Brains([brain], pull=False)
+
+    items = {i["id"]: i for i in mcp_server.pending(brains)}
+    assert set(items) == {"milestones/go-live", "topics/vendor"}
+    ref = items["milestones/go-live"]["ref"]
+    assert ref.startswith("milestones/go-live@") and items["milestones/go-live"]["url"].startswith("obsidian://")
+    with pytest.raises(ValueError, match="id@version"):
+        mcp_server.decide(brains, "approve", ["milestones/go-live"])
+
+    result = mcp_server.decide(brains, "approve", [ref])
+    assert result["lines"] == ["approved milestones/go-live"] and result["commit"]
+    go_live = okf.read(brain.knowledge / "milestones/go-live.md").meta
+    assert go_live["approval"] == "approved" and go_live["verified"][-1]["by"] == "human:dana@example.com"
+    assert mcp_server.decide(brains, "discard", [items["topics/vendor"]["ref"]])["lines"] == ["topics/vendor: discarded"]
+    assert mcp_server.pending(brains) == [] and gitops.status(brain.root) == []
+
+    # A changed item comes with its diff against the approved version.
+    assert ingest.ingest(brain, write(tmp_path / "m2.md", "Milestone: Go-live = 2027-03-01\n"),
+                         agents.resolve(brain)).status == "ingested"
+    changed = mcp_server.pending(brains, scope="all")[0]
+    assert changed["kind"] == "changed" and "+- Go-live: 2027-03-01" in changed["changes"]
+    with pytest.raises(gitops.GitError, match="changed since you looked"):
+        mcp_server.decide(brains, "approve", [ref])  # the version Dana saw before
+
+
+@pytest.mark.parametrize("approvals", [False, True])
+def test_stdio_round_trip(brain, approvals):
     """Real protocol over stdio via `brainforge mcp`: stdout must carry nothing but MCP."""
     write(brain.knowledge / "milestones" / "go-live.md", MILESTONE)
     params = StdioServerParameters(
-        command=sys.executable, args=["-c", "from brainforge.cli import main; main()", "mcp", str(brain.root)],
+        command=sys.executable, args=["-c", "from brainforge.cli import main; main()", "mcp", str(brain.root),
+                                      *(["--approvals"] if approvals else [])],
         env=dict(os.environ),
     )
 
@@ -79,5 +110,5 @@ def test_stdio_round_trip(brain):
             return tools, result.content[0].text  # pyright: ignore[reportAttributeAccessIssue]
 
     tools, text = anyio.run(session)
-    assert tools == {"list_brains", "search", "read"}
+    assert tools == {"list_brains", "search", "read"} | ({"pending", "approve", "discard"} if approvals else set())
     assert "2027-01-15" in text
