@@ -427,6 +427,7 @@ With `adapter: command`, any program works. It receives the prompt on stdin, run
 | `brain show`, `brain validate` | Summary; validate manifest, layout, knowledge, plugin fields and procedures, and warn about isolated concepts and likely duplicates (same title) |
 | `ingest FILE…` | Ingest documents (`--instruction`, `--dry-run`, `--force`, `--no-commit`, `--push`, `--allow-secrets`) |
 | `inbox process` | Ingest everything in `inbox/` |
+| `note TEXT` | Ingest a typed note (a correction, a fact from a call) as a source by you; `-` reads stdin |
 | `knowledge search [TEXT]` | Deterministic search (`--type`, `--tag`, `--status`, `--approval`, `--links-to`, `--linked-from`) |
 | `knowledge query QUESTION` | Agent answer with citations, read-only (`--audience LEVEL`) |
 | `knowledge validate`, `knowledge index` | OKF checks; regenerate `index.md` files |

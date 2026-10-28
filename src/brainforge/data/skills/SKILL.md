@@ -11,6 +11,7 @@ description: Work with a BrainForge brain, a Git-native knowledge base in Open K
 |---|---|
 | Ingest a document | `brainforge ingest <file> [--instruction "<focus>"]` |
 | Ingest everything in the inbox | `brainforge inbox process` |
+| Record what the user tells you (a correction, news from a call) | `brainforge note "<their words>"` |
 | Find knowledge | `brainforge knowledge search "<terms>" [--type Decision] --json` |
 | Answer a question | Search, then read the matching files under `knowledge/` and answer with links to them. For a fully delegated answer: `brainforge knowledge query "<question>"` |
 | List or run procedures | `brainforge procedures list`, then `brainforge run <name>` |

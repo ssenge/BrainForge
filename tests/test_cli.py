@@ -64,6 +64,15 @@ def test_push_race_ingests_again_on_top_of_the_remote(brain, tmp_path, run_cli, 
     assert gitops.git(remote, "log", "--format=%s", "-2").split("\n")[:2] == ["ingest: d.md", "teammate"]
 
 
+def test_note_is_ingested_as_a_source_by_its_author(brain, run_cli):
+    code, out, err = run_cli("--brain", brain.root, "note", "Topic: Quantum")
+    assert code == 0 and out.startswith("ingested note-"), out + err
+    archived = next(brain.root.glob("archive/*/note-*.md")).read_text()
+    assert archived.startswith("# Note by Test, ") and archived.endswith("\n\nTopic: Quantum\n")
+    assert (brain.knowledge / "topics/quantum.md").is_file()
+    assert run_cli("--brain", brain.root, "note", " ")[0] == 2
+
+
 def test_skills_install(brain, run_cli):
     assert run_cli("--brain", brain.root, "skills", "install", "claude")[0] == 0
     assert run_cli("--brain", brain.root, "skills", "install", "codex")[0] == 0

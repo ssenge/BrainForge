@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 import os
 import sys
+import tempfile
 from collections import Counter
 from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -197,6 +199,31 @@ def _ingest_and_push(b: Brain, push: bool, run: Callable[[], list[ingest.Outcome
             typer.echo(f"warning: {', '.join(exc.paths[:3])} changed on the remote meanwhile; "
                        f"ingesting again on top of it (attempt {attempt + 1} of 3)", err=True)
     raise AssertionError("unreachable")
+
+
+@app.command("note")
+def note_cmd(
+    text: Annotated[str, typer.Argument(help="What the brain should know, e.g. a correction; '-' reads stdin.")],
+    no_commit: NoCommitOpt = False,
+    push: PushOpt = False,
+    agent: AgentOpt = None,
+    model: ModelOpt = None,
+) -> None:
+    """Ingest a typed note as a source document by you, e.g. "The go-live moved to 2026-12-01." """
+    b = current()
+    cfg = agents.resolve(b, agent, model)
+    text = (sys.stdin.read() if text == "-" else text).strip()
+    if not text:
+        raise BrainError("the note is empty")
+    who = approval.me(b)  # the team name if git's identity matches a member, else git's name
+    author = who.name if who else gitops.git(b.root, "var", "GIT_AUTHOR_IDENT", check=False).rsplit(" <", 1)[0].strip() or "unknown"
+    now = datetime.now().astimezone()
+    with tempfile.TemporaryDirectory() as tmp:  # ingestion archives the note like any document
+        path = Path(tmp) / f"note-{now:%Y-%m-%d-%H%M%S}.md"
+        path.write_text(f"# Note by {author}, {now:%Y-%m-%d %H:%M}\n\n{text}\n", encoding="utf-8")
+        outcomes = _ingest_and_push(b, wants_push(b, push), lambda: [
+            ingest.ingest(b, path, cfg, commit=wants_commit(b, no_commit))])
+    raise typer.Exit(_report_outcomes(outcomes))
 
 
 @inbox_app.command("process")
