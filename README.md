@@ -230,6 +230,9 @@ A read-only MCP server over stdio. Claude Desktop does the reasoning; BrainForge
 
 4. In a new chat, ask *"What is the current project status for client A in project 1?"* and allow the `brainforge` tools when Claude asks. Claude calls `list_brains`, `search` and `read`, then answers with links to the concepts it used.
 
+<p align="center"><img src="docs/assets/claude-desktop-answer.png" width="600" alt="Claude Desktop answering &quot;What is the current project status for client A in project 1?&quot; using the brainforge tools. The answer lists milestones (integration testing moved from 2026-11-10 to 2026-11-17, go-live disputed), risks, decisions and open actions, each linked to its concept, and states what is not in the knowledge base."></p>
+<p align="center"><sub>Claude Desktop answering from the test brain built in <a href="#2-github-automatic-ingestion-and-scheduled-reports">Getting started → GitHub</a>. Every statement links to its concept, and gaps are named rather than filled in.</sub></p>
+
 | Tool | What it does |
 |---|---|
 | `list_brains` | Ids and names, so "client A, project 1" resolves to `client-a/project-1`. Also returns the concept count, the latest report per procedure, the brain's own instructions and any sync error. |
