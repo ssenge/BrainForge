@@ -26,7 +26,7 @@ Run all three checks before you commit. They are all clean on `main`.
 | `src/brainforge/brain.py` | `brain.yaml` model, brain discovery, `init`, instruction layers |
 | `src/brainforge/agents.py` | Agent adapters (`claude`, `codex`, `command`) and the exact CLI flags they run with |
 | `src/brainforge/gitops.py` | Thin wrapper around the `git` CLI: status, commit, rollback, pull/push, lock |
-| `src/brainforge/parsers.py` | PDF/DOCX/PPTX/HTML/MD → text with page and slide markers |
+| `src/brainforge/parsers.py` | PDF/DOCX/PPTX/HTML/MD/VTT/SRT → text with page, slide and transcript-time markers |
 | `src/brainforge/approval.py` | Approval status, approver routing, the pending scanner, audience views |
 | `src/brainforge/query.py` | Read-only question answering by an agent, with citation checks |
 | `src/brainforge/procedures.py` | Markdown procedures → reports (pandoc for DOCX/PPTX/HTML/PDF) |

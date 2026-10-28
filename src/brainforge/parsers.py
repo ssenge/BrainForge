@@ -1,7 +1,9 @@
-"""Turn documents into markdown text with location markers (pages, slides)."""
+"""Turn documents into markdown text with location markers (pages, slides, transcript times)."""
 
 from __future__ import annotations
 
+import html
+import re
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -114,6 +116,45 @@ def _html(path: Path) -> str:
     return "\n".join(line for i, line in enumerate(lines) if line or (i and lines[i - 1])).strip()
 
 
+CUE_TIME_RE = re.compile(r"^(?:(\d+):)?(\d{1,2}):(\d{2})[.,]\d{1,3}\s+-->")
+VOICE_RE = re.compile(r"<v(?:\.[^\s>]*)?\s+([^>]+)>")
+SPEAKER_RE = re.compile(r"^([^\W\d][\w.'-]*(?: [\w.'-]+){0,3}):\s+(.+)$")  # "Alice Smith: text"
+PARAGRAPH_SECONDS = 60
+
+
+def _transcript(path: Path) -> str:
+    """WebVTT or SRT → one line per speaker turn, `[hh:mm:ss] Speaker: text`. Consecutive cues of the
+    same speaker are joined, with a fresh timestamp at least every minute so claims stay locatable."""
+    turns: list[list] = []  # [seconds, speaker, text]
+    for block in re.split(r"\n\s*\n", path.read_text(encoding="utf-8-sig", errors="replace").replace("\r", "")):
+        lines = block.strip().splitlines()
+        timing = next((i for i, line in enumerate(lines) if "-->" in line), None)
+        if timing is None:  # header, NOTE, STYLE, REGION
+            continue
+        m = CUE_TIME_RE.match(lines[timing].strip())
+        if not m:
+            continue
+        seconds = int(m.group(1) or 0) * 3600 + int(m.group(2)) * 60 + int(m.group(3))
+        raw = " ".join(lines[timing + 1:])
+        voice = VOICE_RE.search(raw)
+        text = " ".join(html.unescape(re.sub(r"<[^>]+>", "", raw)).split())
+        speaker = voice.group(1).strip() if voice else None
+        if not speaker and (named := SPEAKER_RE.match(text)):
+            speaker, text = named.groups()
+        if not text:
+            continue
+        last = turns[-1] if turns else None
+        if last and last[1] == speaker and seconds - last[0] < PARAGRAPH_SECONDS:
+            last[2] += " " + text
+        else:
+            turns.append([seconds, speaker, text])
+    if not turns:
+        raise ParseError("no transcript cues found")
+    stamp = lambda t: f"{t // 3600:02d}:{t % 3600 // 60:02d}:{t % 60:02d}"  # noqa: E731
+    return "<!-- transcript: [hh:mm:ss] is the time from the start of the recording -->\n\n" + "\n\n".join(
+        f"[{stamp(t)}] {speaker + ': ' if speaker else ''}{text}" for t, speaker, text in turns)
+
+
 PARSERS = {
     ".md": lambda p: p.read_text(encoding="utf-8", errors="replace"),
     ".markdown": lambda p: p.read_text(encoding="utf-8", errors="replace"),
@@ -123,6 +164,8 @@ PARSERS = {
     ".pptx": _pptx,
     ".html": _html,
     ".htm": _html,
+    ".vtt": _transcript,
+    ".srt": _transcript,
 }
 
 

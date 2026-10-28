@@ -148,7 +148,7 @@ def _report_outcomes(outcomes: list[ingest.Outcome]) -> int:
 
 @app.command("ingest")
 def ingest_cmd(
-    files: Annotated[list[Path], typer.Argument(help="Documents to ingest (md, txt, pdf, docx, pptx, html).")],
+    files: Annotated[list[Path], typer.Argument(help="Documents to ingest (md, txt, pdf, docx, pptx, html, vtt, srt).")],
     instruction: InstructionOpt = None,
     force: Annotated[bool, typer.Option("--force", help="Re-ingest even if this content was ingested before.")] = False,
     dry_run: Annotated[bool, typer.Option("--dry-run", help="Run the agent and validate, then undo everything.")] = False,

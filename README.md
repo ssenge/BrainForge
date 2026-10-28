@@ -20,7 +20,7 @@ BrainForge turns documents into a structured, versioned knowledge base, called a
 | **Event-driven ingestion** | Push a document to `inbox/`, and a GitHub Actions workflow triggered by the push ingests it, commits the knowledge and pushes it back. Or run `brainforge ingest` locally; both paths share one pipeline. |
 | **Agentic consolidation** | LLM agents don't just append: they merge new facts into existing concepts, move superseded statements to `# History` and record contradictions under `# Conflicts`. Knowledge compounds instead of piling up as RAG chunks. |
 | **Open standard, no lock-in** | Google's [OKF v0.2](https://github.com/GoogleCloudPlatform/open-knowledge-format) with relative links. It is portable, readable by any OKF consumer, and works in GitHub, Obsidian or any editor. |
-| **Provenance by design** | Every claim has a footnote citing its source document, every source is archived by content hash, and `generated` / `verified` trust stamps follow OKF. It is auditable end to end. |
+| **Provenance by design** | Every claim has a footnote citing its source document, with the page, slide or transcript time, every source is archived by content hash, and `generated` / `verified` trust stamps follow OKF. It is auditable end to end. |
 | **Extraction before inference** | The ingestion agent may only extract what the document states. Reports mark interpretations as `Derived:` and missing information as "Not documented". |
 | **Deterministic guardrails** | Deterministic code wraps the probabilistic LLM steps. Agent output is validated through `git status` and OKF schema checks, and is rolled back on any violation. |
 | **Idempotent** | Content addressing (SHA-256) means the same document is never ingested twice, under any name, on any machine. Every run can be safely retried. |
@@ -74,6 +74,7 @@ cd client-a-project-1
 # Ingest documents. Claude Code runs here with your login; each document becomes one commit
 brainforge ingest ~/Downloads/project-plan.pdf
 brainforge ingest ~/Downloads/meeting-notes.docx --instruction "Focus on milestone changes"
+brainforge ingest ~/Downloads/steerco-recording.vtt   # WebVTT/SRT transcripts: speakers and times are kept
 
 # See what was extracted
 git log --stat -1

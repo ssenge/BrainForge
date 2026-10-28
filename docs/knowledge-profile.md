@@ -42,7 +42,7 @@ brainforge:
 Knowledge concepts:
 - list the source in `sources` (`resource: ../sources/<file>.md`);
 - attribute each claim with a footnote whose label is the source id (`[^meeting-…]`);
-- put page and slide locations in the claim text, e.g. "(p. 3)".
+- put page, slide and transcript-time locations in the claim text, e.g. "(p. 3)" or "(00:14:32)".
 
 BrainForge enforces this on every ingestion:
 - each changed concept cites the new source;

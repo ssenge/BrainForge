@@ -50,7 +50,7 @@ Integration testing is scheduled for 2026-11-17 (p. 2).[^meeting-2026-10-28]
 
 - `type` is required. Always set `title` and a one-sentence `description`.
 - Add the given source concept to `sources` of **every** concept you create or change. The `resource` is the path relative to the concept file, e.g. `../sources/<file>.md`. Use the source id given in the task. Keep all existing `sources` entries.
-- Attribute each claim with a footnote `[^<source id>]` and define each footnote once, at the end of the file. Put page or slide locations into the claim text, e.g. "(p. 3)" or "(slide 4)".
+- Attribute each claim with a footnote `[^<source id>]` and define each footnote once, at the end of the file. Put page, slide or transcript-time locations into the claim text, e.g. "(p. 3)", "(slide 4)" or "(00:14:32)". In a transcript, the speaker of a `[hh:mm:ss] Speaker: …` line is who said it; record commitments with the speaker as owner unless the line names someone else.
 - Link related concepts with relative links, e.g. `[Alice Smith](../entities/alice-smith.md)`.
 - When the document names who is responsible for a concept (the owner of an action or risk, a decision maker), record it as written in frontmatter `owner`, e.g. `owner: Alice Smith` or a list. Approvals are routed by it.
 - Do not write `generated`, `verified`, `approval`, `audience`, `index.md` or `log.md`. BrainForge maintains them.

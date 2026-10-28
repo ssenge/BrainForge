@@ -178,6 +178,17 @@ def test_parsers_keep_locations(tmp_path):
     html = write(tmp_path / "h.html", "<html><script>x()</script><h2>Risks</h2><ul><li>Delay</li></ul></html>")
     assert parsers.parse(html) == "## Risks\n\n- Delay"
 
+    vtt = write(tmp_path / "t.vtt", "WEBVTT\n\nNOTE x\n\n1\n00:00:01.000 --> 00:00:03.000 align:start\n"
+                "<v Alice Smith>Go-live</v>\n\n00:00:03.500 --> 00:00:05.000\n<v Alice Smith>moves &amp; slips.</v>\n\n"
+                "01:02:03.000 --> 01:02:04.000\n<v.loud Bob>OK</v>\n\n01:03:04.000 --> 01:03:05.000\nBob: Agreed.\n")
+    assert parsers.parse(vtt).splitlines()[2:] == [
+        "[00:00:01] Alice Smith: Go-live moves & slips.", "", "[01:02:03] Bob: OK", "", "[01:03:04] Bob: Agreed."]
+    srt = write(tmp_path / "t.srt", "1\r\n00:00:01,000 --> 00:00:02,000\r\nAlice: Risk: vendor\r\nlate.\r\n\r\n"
+                "2\r\n00:00:02,500 --> 00:00:03,000\r\nNo speaker.\r\n")
+    assert parsers.parse(srt).endswith("[00:00:01] Alice: Risk: vendor late.\n\n[00:00:02] No speaker.")
+    with pytest.raises(parsers.ParseError, match="no transcript cues"):
+        parsers.parse(write(tmp_path / "e.vtt", "WEBVTT\n\nNOTE nothing\n"))
+
 
 def test_unsupported_and_empty_documents_fail_cleanly(brain, tmp_path):
     with pytest.raises(parsers.ParseError, match="unsupported"):
