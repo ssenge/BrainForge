@@ -50,6 +50,8 @@ AgentOpt = Annotated[str | None, typer.Option("--agent", help="Agent adapter: cl
 ModelOpt = Annotated[str | None, typer.Option("--model", help="Model for the agent CLI.")]
 InstructionOpt = Annotated[str | None, typer.Option("--instruction", "-i", help="Extra instruction for this run.")]
 NoCommitOpt = Annotated[bool, typer.Option("--no-commit", help="Apply changes but do not commit them.")]
+AllowSecretsOpt = Annotated[bool, typer.Option("--allow-secrets", help="Ingest even if the text looks like it "
+                                               "contains credentials (false positives).")]
 PushOpt = Annotated[bool, typer.Option("--push", help="Pull before and push after, rebasing if the remote moved on "
                                        "(never forces). Always on with `git: push: true` in brain.yaml.")]
 
@@ -161,6 +163,7 @@ def ingest_cmd(
     dry_run: Annotated[bool, typer.Option("--dry-run", help="Run the agent and validate, then undo everything.")] = False,
     no_commit: NoCommitOpt = False,
     push: PushOpt = False,
+    allow_secrets: AllowSecretsOpt = False,
     agent: AgentOpt = None,
     model: ModelOpt = None,
 ) -> None:
@@ -172,7 +175,7 @@ def ingest_cmd(
         gitops.pull(b.root)
     start = gitops.head(b.root)
     outcomes = [ingest.ingest(b, f, cfg, instruction=instruction, force=force, dry_run=dry_run,
-                              commit=wants_commit(b, no_commit)) for f in files]
+                              commit=wants_commit(b, no_commit), allow_secrets=allow_secrets) for f in files]
     if push and any(o.commit for o in outcomes):
         gitops.publish(b.root, start)
     raise typer.Exit(_report_outcomes(outcomes))
@@ -184,6 +187,7 @@ def inbox_process(
     dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
     no_commit: NoCommitOpt = False,
     push: PushOpt = False,
+    allow_secrets: AllowSecretsOpt = False,
     agent: AgentOpt = None,
     model: ModelOpt = None,
 ) -> None:
@@ -195,7 +199,7 @@ def inbox_process(
         gitops.pull(b.root)
     start = gitops.head(b.root)
     outcomes, orphans = ingest.process_inbox(b, cfg, instruction=instruction, dry_run=dry_run,
-                                             commit=wants_commit(b, no_commit))
+                                             commit=wants_commit(b, no_commit), allow_secrets=allow_secrets)
     for p in orphans:
         typer.echo(f"warning: {b.rel(p)}: sidecar without a matching document", err=True)
     if push and gitops.head(b.root):

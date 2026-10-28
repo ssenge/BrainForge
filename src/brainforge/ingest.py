@@ -6,6 +6,7 @@ The agent edits the brain repo in place; git is the undo.
 from __future__ import annotations
 
 import hashlib
+import re
 import shutil
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
@@ -150,6 +151,34 @@ def _check_changes(brain: Brain, source: Path, baseline: set[str]) -> tuple[list
     return sorted(created), sorted(updated)
 
 
+# ponytail: well-known token shapes plus `password = …` style assignments; a dedicated scanner
+# (gitleaks, trufflehog) would catch more, at the cost of another external tool.
+SECRET_PATTERNS = [
+    ("private key", r"-----BEGIN [A-Z ]*PRIVATE KEY( BLOCK)?-----"),
+    ("AWS access key", r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"),
+    ("GitHub token", r"\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})"),
+    ("Anthropic or OpenAI key", r"\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{20,}"),
+    ("Slack token", r"\bxox[abprs]-[A-Za-z0-9-]{10,}"),
+    ("Google API key", r"\bAIza[0-9A-Za-z_-]{35}\b"),
+    ("Stripe live key", r"\b[rs]k_live_[0-9A-Za-z]{20,}"),
+    ("JSON web token", r"\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}"),
+    ("password in a URL", r"\b[a-z][a-z0-9+.-]*://[^\s:/@]+:[^\s/@]+@"),
+    ("credential assignment", r"(?i)\b(?:password|passwd|pwd|secret|api[_-]?key|access[_-]?token|client[_-]?secret)"
+                              r"\s*[:=]\s*['\"]?[^\s'\"]{8,}"),
+]
+
+
+def find_secrets(text: str) -> list[str]:
+    """What looks like a credential, as "kind (line n, …)". Never the value itself."""
+    hits: dict[str, list[int]] = {}
+    for number, line in enumerate(text.splitlines(), 1):
+        for kind, pattern in SECRET_PATTERNS:
+            if re.search(pattern, line):
+                hits.setdefault(kind, []).append(number)
+    return [f"{kind} (line {', '.join(map(str, lines[:5]))}{', …' if len(lines) > 5 else ''})"
+            for kind, lines in hits.items()]
+
+
 def _write_source(brain: Brain, path: Path, digest: str, archive_rel: str, entry: str) -> None:
     okf.write(okf.Concept(path, {
         "type": "Source Document",
@@ -183,6 +212,7 @@ def ingest(
     force: bool = False,
     dry_run: bool = False,
     commit: bool = True,
+    allow_secrets: bool = False,
 ) -> Outcome:
     path = path.resolve()
     name = path.name
@@ -207,6 +237,11 @@ def ingest(
     if sidecar.is_file():
         meta, body = okf.split_frontmatter(sidecar.read_text(encoding="utf-8"))
         extra.append(Layer(f"Document sidecar ({sidecar.name})", f"sidecar:{sidecar.name}@{blob_hash(body)}", body))
+        allow_secrets = allow_secrets or bool((meta or {}).get("allow_secrets"))
+    if not allow_secrets and (found := find_secrets(text)):
+        return Outcome(name, "failed", f"possible secrets in the extracted text: {'; '.join(found)}. Remove them: "
+                       "the agent would see them and the archive would keep them in git. If they are false "
+                       "positives, use --allow-secrets or `allow_secrets: true` in the sidecar.")
     if instruction:
         extra.append(Layer("Invocation (--instruction)", f"cli@{blob_hash(instruction)}", instruction))
     layers = instruction_layers(brain, "ingestion", extra)

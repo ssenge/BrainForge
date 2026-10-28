@@ -198,3 +198,20 @@ def test_unsupported_and_empty_documents_fail_cleanly(brain, tmp_path):
     blank = make_pdf(tmp_path / "blank.pdf", "")
     out = ingest.ingest(brain, blank, cfg(brain))
     assert out.status == "failed" and "no extractable text" in out.message
+
+
+def test_secrets_stop_ingestion_before_the_agent_sees_them(brain, tmp_path, prompts, run_cli):
+    key = "AKIA" + "Q" * 16  # built at runtime, so no token-shaped literal sits in the repo
+    doc = write(tmp_path / "creds.md", f"Topic: Alpha\nThe deploy user is {key}.\npassword = hunter2hunter2\n")
+    out = ingest.ingest(brain, doc, cfg(brain))
+    assert out.status == "failed"
+    assert "AWS access key (line 2); credential assignment (line 3)" in out.message and key not in out.message
+    assert prompts() == ""  # the agent never ran
+    assert list((brain.root / "archive").glob("*/creds.md")) == [] and gitops.status(brain.root) == []
+    assert ingest.find_secrets("Use a strong password; ask Alice for the key.") == []
+
+    write(tmp_path / "creds.md.sidecar.md", "---\nallow_secrets: true\n---\n")
+    assert ingest.ingest(brain, doc, cfg(brain)).status == "ingested"
+    other = write(tmp_path / "other.md", f"Topic: Beta\n{key}\n")
+    assert run_cli("--brain", brain.root, "ingest", other)[0] == 1
+    assert run_cli("--brain", brain.root, "ingest", other, "--allow-secrets")[0] == 0

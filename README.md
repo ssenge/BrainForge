@@ -299,16 +299,17 @@ Opening the folder directly in Obsidian also works, but without these settings.
 Both entry paths, local and GitHub, run the same pipeline:
 1. Hash and deduplicate the document.
 2. Parse it to text.
-3. Create a source concept for it.
-4. Let the agent edit `knowledge/` **in place**.
-5. Validate the agent's changes:
+3. Scan the text for credentials (keys, tokens, `password = …`). A hit stops here, before the agent or the archive sees the document; `--allow-secrets` or `allow_secrets: true` in the sidecar overrides false positives.
+4. Create a source concept for it.
+5. Let the agent edit `knowledge/` **in place**.
+6. Validate the agent's changes:
    - only `knowledge/` was touched;
    - nothing was deleted;
    - every changed concept cites the new source;
    - existing provenance is kept;
    - the files are valid OKF.
-6. Mark every created or changed concept as pending approval (see [Approval and audiences](#approval-and-audiences)).
-7. Commit. If anything fails, the changes are rolled back with git.
+7. Mark every created or changed concept as pending approval (see [Approval and audiences](#approval-and-audiences)).
+8. Commit. If anything fails, the changes are rolled back with git.
 
 `brainforge inbox process` runs the inbox path locally, without CI.
 
@@ -422,7 +423,7 @@ With `adapter: command`, any program works. It receives the prompt on stdin, run
 |---|---|
 | `init [DIR]` | Create a brain |
 | `brain show`, `brain validate` | Summary; validate manifest, layout, knowledge and procedures |
-| `ingest FILE…` | Ingest documents (`--instruction`, `--dry-run`, `--force`, `--no-commit`, `--push`) |
+| `ingest FILE…` | Ingest documents (`--instruction`, `--dry-run`, `--force`, `--no-commit`, `--push`, `--allow-secrets`) |
 | `inbox process` | Ingest everything in `inbox/` |
 | `knowledge search [TEXT]` | Deterministic search (`--type`, `--tag`, `--status`, `--approval`, `--links-to`, `--linked-from`) |
 | `knowledge query QUESTION` | Agent answer with citations, read-only (`--audience LEVEL`) |

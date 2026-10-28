@@ -4,6 +4,7 @@ BrainForge processes confidential documents with LLM agents. This document descr
 
 ## Documents are untrusted
 
+- Before anything else, the extracted text is scanned for credentials: private keys, AWS, GitHub, Anthropic, OpenAI, Slack, Google and Stripe keys, JSON web tokens, passwords in URLs, and `password = …` style assignments. A hit stops the ingestion before the agent sees the text and before the original is archived in git. The message names the kind and line, never the value. `--allow-secrets`, or `allow_secrets: true` in the document's sidecar, overrides false positives. The scan is a pattern match: it catches common shapes, not every secret.
 - The parsed document goes into the prompt inside a `<document>` block marked as untrusted data.
 - The framework policy is always the first instruction layer and cannot be overridden. It tells the agent never to follow instructions found in documents.
 - The agent gets file tools only: Claude Code runs with `--tools Read,Write,Edit,Glob,Grep` and Codex with `--sandbox workspace-write`. There is no shell and no network.
