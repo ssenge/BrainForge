@@ -34,6 +34,9 @@ def _merge_json(path: Path, update: dict) -> None:
     path.write_text(json.dumps({**data, **update}, indent=2) + "\n", encoding="utf-8")
 
 
+GRAPH_FILTER = "path:knowledge/ -file:index.md -file:log.md"
+
+
 def obsidian_config(brain: Brain) -> Path:
     """Write the (gitignored) .obsidian/ settings: colour by OKF type, hide machinery, keep links as written."""
     vault = brain.root / ".obsidian"
@@ -41,7 +44,8 @@ def obsidian_config(brain: Brain) -> Path:
     types = sorted({str(c.meta.get("type")) for c in okf.read_all(brain.knowledge)})
     groups = [{"query": f'[type:"{t}"]', "color": {"a": 1, "rgb": PALETTE[i % len(PALETTE)]}}
               for i, t in enumerate(types)]
-    _merge_json(vault / "graph.json", {"colorGroups": groups})
+    # Only the knowledge itself: the generated index.md/log.md files link to everything and would turn the graph into a star.
+    _merge_json(vault / "graph.json", {"search": GRAPH_FILTER, "colorGroups": groups})
     _merge_json(vault / "app.json", {
         "userIgnoreFilters": ["archive/", ".brainforge/", ".github/"],
         "useMarkdownLinks": True,  # OKF uses standard markdown links, not [[wikilinks]]

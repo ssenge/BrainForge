@@ -253,6 +253,28 @@ Options:
 
 **Phase A note:** the server serves several independent brains side by side. A roll-up across a client's projects, such as "status of all client A projects", needs the brain hierarchy; see the [Roadmap](#roadmap-a-hierarchy-of-brains).
 
+### Explore the graph in Obsidian
+
+```bash
+cd ~/brains/client-a-project-1
+brainforge workspace open      # writes the vault settings and opens the brain in Obsidian
+```
+
+Then open the **Graph view** with ⌘G (Ctrl+G), or with the graph icon in the left ribbon. Obsidian doesn't open it by itself.
+
+`workspace open` sets up the vault:
+- colors by concept type;
+- a graph limited to `knowledge/`, with the generated `index.md` and `log.md` hidden, since they link to everything and would turn the graph into a star;
+- `archive/` excluded;
+- links kept as relative Markdown links.
+
+When to run it:
+- Once per clone, because `.obsidian/` is gitignored.
+- Again when new concept types appear, to update the colors.
+- If Obsidian already has the vault open, run *Reload app without saving* from the command palette afterwards. Otherwise Obsidian keeps its old settings.
+
+Opening the folder directly in Obsidian also works, but without these settings.
+
 ## How ingestion works
 
 Both entry paths, local and GitHub, run the same pipeline:
