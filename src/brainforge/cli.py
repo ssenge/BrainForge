@@ -273,7 +273,7 @@ ItemsArg = Annotated[list[str], typer.Argument(help="Concept ids or paths, e.g. 
 def _item_line(d: dict) -> str:
     extra = [f"owner: {d['owner']}" if d["owner"] else "", f"from {d['source']}" if d["source"] else "",
              f"changed since {d['since'][:8]}" if d["since"] else "", f"missing {', '.join(d['gaps'])}" if d["gaps"] else ""]
-    return f"{'~' if d['since'] else '+'} {d['id']}  [{d['type']}] {d['title']}" + (
+    return f"{ {'new': '+', 'changed': '~', 'expired': '!'}[d['kind']]} {d['id']}  [{d['type']}] {d['title']}" + (
         f"  ({', '.join(e for e in extra if e)})" if any(extra) else "")
 
 
@@ -299,7 +299,7 @@ def pending_cmd(
     all_: Annotated[bool, typer.Option("--all", help="Every pending item.")] = False,
     check: Annotated[bool, typer.Option("--check", help="Exit 1 if anything is pending.")] = False,
 ) -> None:
-    """Knowledge awaiting approval: yours by default (+ new, ~ changed); --team shows who still has to act."""
+    """Knowledge awaiting approval: yours by default (+ new, ~ changed, ! expired); --team: who still has to act."""
     b = current()
     _sync(b)
     if team:

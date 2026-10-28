@@ -36,7 +36,7 @@ New and changed knowledge arrives as `approval: pending`. Each person approves t
    - **Approve for <audience>**: one option per entry in the item's `wider` list (none if it is empty); `brainforge approve <id>@<version> --audience <audience>`
    - **Discard**: `brainforge discard <id>@<version>`
    - **Not now**: do nothing; it stays pending
-   Offer to approve routine items together ("Approve all 3") when nothing is missing.
+   Offer to approve routine items together ("Approve all 3") when nothing is missing. For an `expired` item, ask whether it is still true: Approve confirms it, Discard retires it.
 4. A correction typed as a free answer is knowledge too: write it into a short Markdown note outside the brain (who said what, today's date), run `brainforge ingest <note> --instruction "Corrections from <name>"`, then approve the concepts that ingestion changed, since they come from the approver.
 5. If a decision fails with "changed since you looked", show the item again; never retry without the user seeing the new version.
 6. End with one line per decision, nothing else.

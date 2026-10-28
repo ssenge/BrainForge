@@ -29,6 +29,17 @@ def state(c: okf.Concept) -> str:
     return str(c.meta.get("approval") or "approved")
 
 
+def expired(c: okf.Concept, now: datetime | None = None) -> bool:
+    """Approved, but past its `stale_after`: someone should confirm it is still true."""
+    at = c.meta.get("stale_after")
+    if not at or state(c) != "approved" or c.meta.get("status") == "deprecated":
+        return False
+    try:
+        return datetime.fromisoformat(str(at)) < (now or datetime.now(UTC))
+    except ValueError:
+        return False
+
+
 def audience_of(brain: Brain, c: okf.Concept) -> str | None:
     levels = brain.manifest.audiences
     return str(c.meta.get("audience") or levels[-1]) if levels else None
@@ -116,6 +127,7 @@ class Item:
     rel: str  # knowledge/<group>/<slug>.md
     approvers: list[TeamMember]
     since: str | None  # commit of the last approved version; None for a new item
+    expired: bool = False  # approved, but past its review date
 
     def as_dict(self, brain: Brain) -> dict[str, Any]:
         c = self.concept
@@ -125,7 +137,8 @@ class Item:
             "id": okf.concept_id(brain.knowledge, c.path), "path": self.rel, "url": url(c.path),
             "type": c.meta.get("type"), "title": c.title, "owner": c.meta.get("owner"),
             "audience": audience_of(brain, c), "wider": _wider(brain, c),
-            "kind": "changed" if self.since else "new", "since": self.since,
+            "kind": "expired" if self.expired else "changed" if self.since else "new", "since": self.since,
+            "stale_after": c.meta.get("stale_after"),
             "source": (sources[-1].get("title") or sources[-1].get("id")) if sources else None,
             "pending_since": at or None, "approvers": [m.name for m in self.approvers],
             "version": (version(brain.root, self.rel) or "")[:7] or None,
@@ -147,12 +160,15 @@ def last_approved(root: Path, rel: str) -> tuple[str, str] | None:
 
 
 def pending(brain: Brain) -> list[Item]:
-    items = []
+    """Everything awaiting a person: pending items, and approved ones past their review date."""
+    items, now = [], datetime.now(UTC)
     for c in okf.read_all(brain.knowledge):
+        rel = brain.rel(c.path)
         if state(c) == "pending":
-            rel = brain.rel(c.path)
             found = last_approved(brain.root, rel)
             items.append(Item(c, rel, approvers(brain, c), found[0] if found else None))
+        elif expired(c, now):
+            items.append(Item(c, rel, approvers(brain, c), None, expired=True))
     return items
 
 
@@ -203,6 +219,8 @@ def approve(brain: Brain, refs: list[str], audience: str | None = None, by: str 
     paths = [resolve(brain, r) for r in refs]
     for path in paths:
         c = okf.read(path)
+        if expired(c) and not plugins.renew(brain, c):  # confirmed as still true
+            c.meta.pop("stale_after", None)
         c.meta["approval"] = "approved"
         if audience:
             c.meta["audience"] = audience
@@ -215,9 +233,16 @@ def approve(brain: Brain, refs: list[str], audience: str | None = None, by: str 
 
 def discard(brain: Brain, refs: list[str]) -> list[tuple[Path, str]]:
     """A change to an approved item is undone (git restores that version); a new item becomes a
-    tombstone, so the next document doesn't recreate it. Returns (path, what happened)."""
+    tombstone, so the next document doesn't recreate it; an expired item is retired (deprecated).
+    Returns (path, what happened)."""
     done = []
     for path in [resolve(brain, r) for r in refs]:
+        c = okf.read(path)
+        if expired(c):  # no longer true: retire it
+            c.meta["status"] = "deprecated"
+            okf.write(c)
+            done.append((path, "retired (status: deprecated)"))
+            continue
         found = last_approved(brain.root, brain.rel(path))
         if found:
             path.write_text(found[1], encoding="utf-8")
@@ -323,7 +348,8 @@ def reminder(brain: Brain, repo_url: str | None = None, only: TeamMember | None 
     groups.append(("Unassigned" if brain.manifest.team else "Pending", [i for i in items if not i.approvers]))
     parts = [f"**{len(items)} item(s) await approval.** Reply with one command per line: `approve <item>`, "
              "`approve <item> --audience <name>` or `discard <item>`. The version after `@` makes sure "
-             "you decide on what you saw."]
+             "you decide on what you saw. For an expired item, approve confirms it is still true and "
+             "discard retires it."]
     for head, group in groups:
         if group:
             parts += ["", head, *map(line, group)]

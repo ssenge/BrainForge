@@ -1,11 +1,12 @@
 """Plugins: copied into the brain, they add types, instruction layers, procedures and scripts. Uses the bundled pm plugin."""
 
 import json
+from datetime import date, timedelta
 
 import pytest
 from conftest import write
 
-from brainforge import agents, approval, cli, ingest, plugins, procedures
+from brainforge import agents, approval, cli, gitops, ingest, okf, plugins, procedures
 from brainforge import brain as brain_mod
 from brainforge.brain import BrainError, instruction_layers
 
@@ -75,3 +76,31 @@ def test_validate_reports_wrong_values_and_groups(pm, run_cli):
     write(pm.knowledge / "topics/a-risk.md", "---\ntype: Risk\ntitle: A risk\nlikelihood: huge\n---\nx\n")
     code, out, _ = run_cli("--brain", pm.root, "brain", "validate")
     assert code == 1 and "likelihood must be one of low, medium, high, not 'huge'" in out and "belongs in risks/" in out
+
+
+def test_review_period_expires_and_renews(brain, tmp_path, run_cli):
+    write(tmp_path / "review/plugin.yaml", "name: review\ntypes:\n  - {type: Milestone, group: milestones, stale_after_days: 10}\n")
+    plugins.add(brain, str(tmp_path / "review"))
+    gitops.commit(brain.root, "plugin", ["plugins"])
+    gitops.git(brain.root, "config", "user.email", "dana@example.com")
+    assert ingest.ingest(brain, write(tmp_path / "m.md", "Milestone: Go-live = 2027-02-01\n"), agents.resolve(brain)).status == "ingested"
+    go_live = brain.knowledge / "milestones/go-live.md"
+    assert okf.read(go_live).meta["stale_after"][:10] == str(date.today() + timedelta(days=10))
+    assert run_cli("--brain", brain.root, "approve", "milestones/go-live")[0] == 0
+
+    def expire():
+        c = okf.read(go_live)
+        c.meta["stale_after"] = "2020-01-01T00:00:00Z"
+        okf.write(c)
+        gitops.commit(brain.root, "time passes", ["knowledge"])
+
+    expire()
+    code, out, _ = run_cli("--brain", brain.root, "pending", "--check")
+    assert code == 1 and "! milestones/go-live" in out
+    assert run_cli("--brain", brain.root, "approve", "milestones/go-live")[0] == 0  # still true: renewed
+    assert okf.read(go_live).meta["stale_after"] > okf.now_iso() and approval.pending(brain) == []
+
+    expire()
+    code, out, _ = run_cli("--brain", brain.root, "discard", "milestones/go-live")
+    assert code == 0 and "retired (status: deprecated)" in out
+    assert okf.read(go_live).meta["status"] == "deprecated" and approval.pending(brain) == []

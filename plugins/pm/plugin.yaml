@@ -27,6 +27,7 @@ types:
   - type: Risk
     group: risks
     description: Something that may happen and would affect the project.
+    stale_after_days: 30
     fields:
       owner: {expected: true}
       likelihood: {values: [low, medium, high]}
@@ -36,6 +37,7 @@ types:
   - type: Issue
     group: issues
     description: Something that has happened and affects the project.
+    stale_after_days: 30
     fields:
       owner: {expected: true}
       severity: {values: [low, medium, high]}
@@ -43,6 +45,7 @@ types:
   - type: Assumption
     group: assumptions
     description: Something the plan takes for granted without proof.
+    stale_after_days: 30
     fields:
       owner: {}
       state: {values: [open, confirmed, invalid]}
@@ -56,6 +59,7 @@ types:
   - type: Project
     group: projects
     description: The project itself, with its overall status.
+    stale_after_days: 14
     fields:
       owner: {}
       rag: {description: "overall status, only when the document states it", values: [green, amber, red]}

@@ -263,11 +263,12 @@ def ingest(
                 gitops.rollback(root, baseline)
                 return Outcome(name, "dry-run", "agent output valid; nothing applied", brain.rel(source), created, updated)
 
-            now, by = okf.now_iso(), agents.actor(cfg)
+            now, by, known = okf.now_iso(), agents.actor(cfg), plugins.types(brain)
             for p in created + updated:
                 c = okf.read(root / p)
                 c.meta["generated"] = {"by": by, "at": now}
                 approval.stamp(brain, c, p)
+                plugins.renew(brain, c, known)
                 okf.write(c)
             _finish_source(source, {
                 "type": "Source Document",

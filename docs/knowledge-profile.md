@@ -66,6 +66,7 @@ Integration testing starts on 2026-11-17.[^meeting]
 - `generated` is stamped by BrainForge: `by: brainforge/<model>` and `at`.
 - `approval` (BrainForge profile) is `pending`, `approved` or `discarded`; a concept without it counts as approved. BrainForge sets every concept an ingestion creates or changes to `pending`, whatever the agent wrote.
 - `brainforge approve <concept>` sets `approved` and adds `verified: {by: human:<git user>, at}`, which raises the concept to OKF's highest trust tier: a human has verified it.
+- `stale_after` (OKF) is set by BrainForge for plugin types with a review period. An approved concept past it is listed as expired until someone confirms (approve) or retires it (discard sets `status: deprecated`).
 - `brainforge discard <concept>` undoes a pending change by restoring the last approved version from git. A new concept becomes a tombstone (`approval: discarded`), so the agent doesn't create it again; search, reports and the Obsidian graph hide it.
 - `audience` is one of the brain's audiences (see [brain-manifest.md](brain-manifest.md)). BrainForge keeps the value people set and gives new concepts the narrowest audience; the agent can't change it.
 - `owner` names who is responsible, as the document says it. Approvals are routed by it.

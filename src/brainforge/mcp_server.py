@@ -41,6 +41,8 @@ Approvals are enabled: you record the user's own decisions on knowledge awaiting
 3. Only then call `approve` or `discard` with the `ref` values exactly as `pending` returned them.
    Never decide on your own or for someone else. If a decision fails because the item changed,
    show the new version before asking again.
+4. An `expired` item was approved before but is past its review date: Approve confirms it is still true,
+   Discard retires it.
 
 """
 

@@ -380,6 +380,8 @@ needs_approval: [{type: Decision}, {type: Action Item}, {type: Risk}, {type: Mil
 - **Discard** of a change to an approved item restores the approved version from git. Discard of a new item keeps it as a hidden tombstone, so the next meeting doesn't recreate it.
 - **Not now** leaves it pending.
 
+**Expired knowledge comes back.** A plugin type can have a review period (`stale_after_days`; in the pm plugin, 14 days for the project status, 30 for risks, issues and assumptions). Every change sets OKF `stale_after`, and once it passes, the item shows up in `pending` as expired (`!`), routed like everything else. Approve confirms it is still true and starts a new period; discard retires it (`status: deprecated`).
+
 Decisions are small commits, so people deciding in parallel don't conflict, and `git log` shows who decided what.
 
 **Nobody approves what they haven't seen.** `approve` and `discard` pull first. If the pull changed an item you named, nothing is decided and you look again. `pending --json` gives each item's `version`, the commit that last changed it; `approve milestones/go-live@3f2a1c9` stops if the item changed after that version. The same check runs when a push has to catch up with someone else's.

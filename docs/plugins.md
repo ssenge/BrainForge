@@ -37,6 +37,7 @@ types:
   - type: Action Item             # the frontmatter `type`
     group: actions                # folder under knowledge/
     description: A task someone committed to.
+    stale_after_days: 30          # optional review period, see below
     fields:
       owner: {description: "who does it, as written", expected: true}
       due: {format: date, expected: true}
@@ -48,6 +49,8 @@ Each field may have:
 - `values`: the allowed values (case-insensitive);
 - `format: date`: a `YYYY-MM-DD` date;
 - `expected: true`: approvers see a missing value as a gap (`brainforge pending`, the GitHub reminder, Claude).
+
+`stale_after_days` gives the type a review period. Every change to such an item sets OKF `stale_after` to now plus the period. When it passes, the approved item is listed as expired in `brainforge pending`, so its approvers confirm it (approve: a new period starts) or retire it (discard: `status: deprecated`). Approval-gated reports wait for expired items too.
 
 Avoid `status` as a field name: OKF uses it for the concept's lifecycle (`draft`, `stable`, `deprecated`). The pm plugin uses `state`.
 

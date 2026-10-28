@@ -17,7 +17,7 @@ import re
 import shutil
 import subprocess
 import sys
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Literal
 
@@ -45,6 +45,7 @@ class TypeDef(BaseModel):
     group: str = Field(pattern=NAME_RE)
     description: str = ""
     fields: dict[str, FieldDef] = {}
+    stale_after_days: int | None = Field(default=None, gt=0)  # review period: OKF `stale_after` on every change
 
 
 class Plugin(BaseModel):
@@ -132,6 +133,15 @@ def gaps(brain: Brain, c: okf.Concept, known: dict[str, TypeDef] | None = None) 
     """Expected fields the concept doesn't have yet."""
     t = (types(brain) if known is None else known).get(str(c.meta.get("type")))
     return [name for name, f in t.fields.items() if f.expected and c.meta.get(name) in (None, "", [])] if t else []
+
+
+def renew(brain: Brain, c: okf.Concept, known: dict[str, TypeDef] | None = None) -> bool:
+    """Set `stale_after` to now + the type's review period. False if the type has none."""
+    t = (types(brain) if known is None else known).get(str(c.meta.get("type")))
+    if not (t and t.stale_after_days):
+        return False
+    c.meta["stale_after"] = okf.now_iso(datetime.now(UTC) + timedelta(days=t.stale_after_days))
+    return True
 
 
 def check(brain: Brain, path: Path, known: dict[str, TypeDef] | None = None) -> list[okf.Issue]:
