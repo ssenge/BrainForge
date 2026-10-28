@@ -343,8 +343,12 @@ def _emit_decision(result: dict[str, Any]) -> None:
 
 
 def _approve(b: Brain, refs: list[str], audience: str | None, by: str | None = None) -> Callable[[], list[tuple[Path, str]]]:
-    return lambda: [(p, f"approved {okf.concept_id(b.knowledge, p)}" + (f" for {audience}" if audience else ""))
-                    for p in approval.approve(b, refs, audience, by)]
+    def line(p: Path) -> str:
+        hidden = approval.hidden_links(b, p, audience) if audience else []
+        return (f"approved {okf.concept_id(b.knowledge, p)}" + (f" for {audience}" if audience else "")
+                + (f" (links {audience} can't see, left out for {audience}: {', '.join(hidden)})" if hidden else ""))
+
+    return lambda: [(p, line(p)) for p in approval.approve(b, refs, audience, by)]
 
 
 def _discard(b: Brain, refs: list[str]) -> Callable[[], list[tuple[Path, str]]]:

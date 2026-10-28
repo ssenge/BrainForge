@@ -279,6 +279,14 @@ def visible(brain: Brain, c: okf.Concept, audience: str) -> bool:
     return state(c) == "approved" and aud in levels and levels.index(aud) <= levels.index(audience)
 
 
+def hidden_links(brain: Brain, path: Path, audience: str) -> list[str]:
+    """Concepts this one links to that `audience` may not see; its views leave those links out."""
+    bundle = brain.knowledge.resolve()
+    targets = {t for t in okf.links(okf.read(path), bundle)
+               if t.suffix == ".md" and t.is_file() and t.is_relative_to(bundle) and t.name not in okf.RESERVED}
+    return sorted(okf.concept_id(bundle, t) for t in targets if not visible(brain, okf.read(t), audience))
+
+
 def check_audience(brain: Brain, audience: str) -> None:
     if audience not in brain.manifest.audiences:
         raise BrainError(f"unknown audience '{audience}'; brain.yaml audiences: {brain.manifest.audiences or 'none'}")
@@ -288,14 +296,14 @@ LINK_RE = re.compile(r"(?<!!)\[([^\]]*)\]\(([^)\s#]+)(#[^)\s]*)?\)")
 
 
 def _unlink_hidden(path: Path, bundle: Path) -> None:
-    """A link to a concept the audience may not see keeps its (approved) text but loses the path,
-    so an agent working in the view can't follow or cite it."""
+    """Links to concepts the audience may not see are removed, text included: a link's text is
+    usually the hidden concept's title, which is internal too. `hidden_links` tells approvers."""
     def sub(m: re.Match[str]) -> str:
         target = m.group(2)
         if not target.endswith(".md") or re.match(r"^[a-z][a-z0-9+.-]*:", target):
             return m.group(0)
         base = bundle if target.startswith("/") else path.parent
-        return m.group(0) if (base / target.lstrip("/")).exists() else m.group(1)
+        return m.group(0) if (base / target.lstrip("/")).exists() else ""
 
     path.write_text(LINK_RE.sub(sub, path.read_text(encoding="utf-8")), encoding="utf-8")
 

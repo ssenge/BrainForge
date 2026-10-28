@@ -19,7 +19,7 @@ BrainForge processes confidential documents with LLM agents. This document descr
 
 ## Audiences: what a report or query may see
 
-- Reports and queries for an audience (`audience: client` in a procedure, `--audience client` on a query) run the agent on a throwaway copy of the brain that holds only approved concepts meant for that audience or a wider one. Index files are rebuilt for the copy; the archive, log and configuration are left out. Links to concepts the audience may not see keep their text but lose their path, so the agent can't follow them.
+- Reports and queries for an audience (`audience: client` in a procedure, `--audience client` on a query) run the agent on a throwaway copy of the brain that holds only approved concepts meant for that audience or a wider one. Index files are rebuilt for the copy; the archive, log and configuration are left out. Links to concepts the audience may not see are removed, text included, because a link's text is usually the hidden concept's title. `approve --audience` lists such links, so the approver can widen a linked item (a person, say) when that is intended.
 - After a report, BrainForge rejects it if it cites any concept outside that set.
 - **Residual risk:** the copy is a separate folder, not a sandbox. The agent isn't told where the brain is, but file tools could read outside the copy if it went looking. The citation check catches cited leaks, not paraphrased ones. An audience is only as good as the approver's choice.
 

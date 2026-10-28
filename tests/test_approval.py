@@ -141,10 +141,11 @@ def test_audience_view_unlinks_what_the_audience_may_not_see(team, tmp_path):
     public = okf.read(team.knowledge / "topics/public.md")
     public.body += "\n\nRelated: [Secret](../topics/secret.md#risk), [Itself](public.md), [Web](https://x.org/a.md)."
     okf.write(public)
-    approval.approve(team, ["topics/public"], "client")
     approval.approve(team, ["topics/secret"])
+    approval.approve(team, ["topics/public"], "client")
+    assert approval.hidden_links(team, public.path, "client") == ["topics/secret"]
     with approval.view(team, "client") as (root, _):
-        assert "Related: Secret, [Itself](public.md), [Web](https://x.org/a.md)." in (
+        assert "Related: , [Itself](public.md), [Web](https://x.org/a.md)." in (
             root / "knowledge/topics/public.md").read_text()
 
 
