@@ -1,0 +1,4 @@
+# BrainForge writes log entries on several branches; union merge never conflicts.
+knowledge/log.md merge=union
+# Large binaries: consider Git LFS, e.g.
+# archive/** filter=lfs diff=lfs merge=lfs -text
