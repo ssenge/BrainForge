@@ -1,0 +1,148 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 610" width="1000" height="610" role="img" aria-labelledby="title desc">
+  <title id="title">How BrainForge works</title>
+  <desc id="desc">Documents enter locally or through GitHub, pass one ingestion pipeline, land as versioned knowledge in the brain's Git repository, and are then asked, reported on and explored.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M1 1 L9 5 L1 9 z" fill="#8a857d"/>
+    </marker>
+    <style>
+      text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+      .h1 { font-size: 23px; font-weight: 700; fill: #f2efe9; }
+      .sub { font-size: 14px; fill: #a39e96; }
+      .col { font-size: 12px; font-weight: 700; letter-spacing: 1.6px; fill: #f08a3c; }
+      .title { font-size: 16px; font-weight: 700; fill: #f2efe9; }
+      .step { font-size: 14.5px; font-weight: 650; fill: #f2efe9; }
+      .body { font-size: 13px; fill: #b3aea6; }
+      .small { font-size: 12px; fill: #a39e96; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; fill: #f6b37a; }
+      .dir { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13.5px; font-weight: 600; fill: #f2efe9; }
+      .num { font-size: 12px; font-weight: 700; fill: #f2efe9; }
+      .card { fill: #222326; stroke: #36383c; stroke-width: 1; }
+      .chip { fill: #2a2b2f; }
+      .flow { fill: none; stroke: #8a857d; stroke-width: 1.8; }
+      .icon { fill: none; stroke: #f08a3c; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    </style>
+  </defs>
+
+  <rect width="1000" height="610" rx="22" fill="#18191b"/>
+
+  <text class="h1" x="40" y="54">How BrainForge works</text>
+  <text class="sub" x="40" y="80">One pipeline, two ways in. Git is the source of truth: every change is a commit.</text>
+
+  <text class="col" x="40" y="126">DOCUMENTS IN</text>
+  <text class="col" x="275" y="126">ONE PIPELINE</text>
+  <text class="col" x="550" y="126">YOUR BRAIN</text>
+  <text class="col" x="785" y="126">USE IT</text>
+
+  <!-- Column 1: two ways in -->
+  <rect class="card" x="40" y="142" width="190" height="168" rx="14"/>
+  <g class="icon">
+    <rect x="58" y="160" width="28" height="18" rx="2.5"/>
+    <path d="M53 183 H91"/>
+  </g>
+  <text class="title" x="100" y="177">Local</text>
+  <text class="mono" x="58" y="216">$ brainforge ingest</text>
+  <text class="body" x="58" y="248">On your machine,</text>
+  <text class="body" x="58" y="267">with your own AI login.</text>
+  <text class="small" x="58" y="292">Commit, then push if you like.</text>
+
+  <rect class="card" x="40" y="332" width="190" height="168" rx="14"/>
+  <g class="icon">
+    <circle cx="63" cy="356" r="4"/>
+    <circle cx="63" cy="380" r="4"/>
+    <circle cx="83" cy="362" r="4"/>
+    <path d="M63 360 V376 M83 366 C83 374 72 374 66 378"/>
+  </g>
+  <text class="title" x="100" y="373">GitHub</text>
+  <text class="mono" x="58" y="406">$ git push → inbox/</text>
+  <text class="body" x="58" y="438">GitHub Actions ingests</text>
+  <text class="body" x="58" y="457">automatically.</text>
+  <text class="small" x="58" y="482">Agent key as a repo secret.</text>
+
+  <!-- Column 2: the pipeline -->
+  <rect class="card" x="275" y="142" width="230" height="358" rx="14"/>
+
+  <rect class="chip" x="289" y="156" width="202" height="56" rx="10"/>
+  <circle cx="310" cy="184" r="11" fill="#3a3b40"/>
+  <text class="num" x="310" y="188" text-anchor="middle">1</text>
+  <text class="step" x="330" y="180">Deduplicate</text>
+  <text class="small" x="330" y="199">same file? skip it</text>
+
+  <rect class="chip" x="289" y="222" width="202" height="56" rx="10"/>
+  <circle cx="310" cy="250" r="11" fill="#3a3b40"/>
+  <text class="num" x="310" y="254" text-anchor="middle">2</text>
+  <text class="step" x="330" y="246">Parse</text>
+  <text class="small" x="330" y="265">PDF, Office, HTML, MD</text>
+
+  <rect x="289" y="288" width="202" height="56" rx="10" fill="#e8762b"/>
+  <circle cx="310" cy="316" r="11" fill="#18191b" fill-opacity="0.25"/>
+  <text class="num" x="310" y="320" text-anchor="middle" style="fill:#18191b">3</text>
+  <text class="step" x="330" y="312" style="fill:#18191b">Extract &amp; merge</text>
+  <text class="small" x="330" y="331" style="fill:#3b2414">Claude Code or Codex</text>
+
+  <rect class="chip" x="289" y="354" width="202" height="56" rx="10"/>
+  <circle cx="310" cy="382" r="11" fill="#3a3b40"/>
+  <text class="num" x="310" y="386" text-anchor="middle">4</text>
+  <text class="step" x="330" y="378">Validate</text>
+  <text class="small" x="330" y="397">facts cited, scope kept</text>
+
+  <rect class="chip" x="289" y="420" width="202" height="56" rx="10"/>
+  <circle cx="310" cy="448" r="11" fill="#3a3b40"/>
+  <text class="num" x="310" y="452" text-anchor="middle">5</text>
+  <text class="step" x="330" y="444">Commit</text>
+  <text class="small" x="330" y="463">or roll back with git</text>
+
+  <!-- Column 3: the brain -->
+  <rect x="550" y="142" width="190" height="358" rx="14" fill="#222326" stroke="#e8762b" stroke-width="1.6"/>
+  <text class="title" x="568" y="175">Brain</text>
+  <text class="small" x="568" y="194">a plain Git repository</text>
+  <path d="M568 208 H722" stroke="#36383c" stroke-width="1"/>
+
+  <text class="dir" x="568" y="234">knowledge/</text>
+  <text class="small" x="568" y="252">facts as OKF Markdown</text>
+  <text class="dir" x="568" y="284">archive/</text>
+  <text class="small" x="568" y="302">original documents</text>
+  <text class="dir" x="568" y="334">procedures/</text>
+  <text class="small" x="568" y="352">report recipes</text>
+  <text class="dir" x="568" y="384">reports/</text>
+  <text class="small" x="568" y="402">generated reports</text>
+  <text class="dir" x="568" y="434">instructions.md</text>
+  <text class="small" x="568" y="452">how the AI should work</text>
+  <text class="small" x="568" y="482" style="fill:#f08a3c">versioned &amp; revertable</text>
+
+  <!-- Column 4: use it -->
+  <rect class="card" x="785" y="142" width="175" height="110" rx="14"/>
+  <text class="title" x="803" y="172">Ask questions</text>
+  <text class="body" x="803" y="198">Claude Desktop · MCP</text>
+  <text class="body" x="803" y="218">Claude Code · Codex</text>
+  <text class="small" x="803" y="238">answers with citations</text>
+
+  <rect class="card" x="785" y="266" width="175" height="110" rx="14"/>
+  <text class="title" x="803" y="296">Get reports</text>
+  <text class="body" x="803" y="322">weekly, via cron or</text>
+  <text class="body" x="803" y="342">GitHub Actions</text>
+  <text class="small" x="803" y="362">MD, DOCX, PPTX, PDF</text>
+
+  <rect class="card" x="785" y="390" width="175" height="110" rx="14"/>
+  <text class="title" x="803" y="420">Explore</text>
+  <text class="body" x="803" y="446">Obsidian graph view</text>
+  <text class="body" x="803" y="466">or any text editor</text>
+  <text class="small" x="803" y="486">it is just Markdown</text>
+
+  <!-- Flows -->
+  <g class="flow">
+    <path d="M230 226 C254 226 248 300 271 316" marker-end="url(#arrow)"/>
+    <path d="M230 416 C254 416 248 332 271 322" marker-end="url(#arrow)"/>
+    <path d="M505 321 H546" marker-end="url(#arrow)"/>
+    <path d="M740 300 C762 300 760 197 781 197" marker-end="url(#arrow)"/>
+    <path d="M740 321 H781" marker-end="url(#arrow)"/>
+    <path d="M740 342 C762 342 760 445 781 445" marker-end="url(#arrow)"/>
+  </g>
+
+  <!-- Legend -->
+  <rect x="40" y="540" width="14" height="14" rx="3" fill="#e8762b"/>
+  <text class="small" x="62" y="552">AI agent: reads the document, writes knowledge</text>
+  <rect x="376" y="540" width="14" height="14" rx="3" fill="#2a2b2f" stroke="#4a4c51"/>
+  <text class="small" x="398" y="552">deterministic BrainForge code</text>
+  <text class="small" x="960" y="552" text-anchor="end">No server · no database · open format (OKF)</text>
+</svg>
