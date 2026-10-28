@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from cronsim import CronSim, CronSimError
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-from brainforge import agents, gitops, okf, review
+from brainforge import agents, approval, gitops, okf
 from brainforge.brain import AgentConfig, Brain, Layer, blob_hash, instruction_layers, render_layers
 from brainforge.ingest import require_clean
 
@@ -78,8 +78,8 @@ class Procedure(BaseModel):
     description: str = ""
     agent: Literal["claude", "codex", "command"] | None = None
     knowledge: Scope = Scope()
-    audience: str | None = None  # a brain.yaml visibility level: the report sees only confirmed knowledge up to it
-    require_review: bool = False  # refuse to run while knowledge awaits review
+    audience: str | None = None  # one of brain.yaml's audiences: the report sees only approved knowledge meant for it
+    require_approval: bool = False  # refuse to run while knowledge awaits approval
     output: Output = Field(default_factory=Output)
     schedule: Schedule | None = None
     path: Path = Field(exclude=True)
@@ -121,8 +121,8 @@ def load_all(brain: Brain) -> tuple[list[Procedure], list[okf.Issue]]:
         seen[p.name] = p
         if p.output.template and not (brain.root / p.output.template).is_file():
             issues.append(okf.Issue("error", brain.rel(p.path), f"template not found: {p.output.template}"))
-        if p.audience and p.audience not in brain.manifest.visibility:
-            issues.append(okf.Issue("error", brain.rel(p.path), f"audience '{p.audience}' is not a visibility level in brain.yaml"))
+        if p.audience and p.audience not in brain.manifest.audiences:
+            issues.append(okf.Issue("error", brain.rel(p.path), f"audience '{p.audience}' is not in brain.yaml audiences"))
     return procs, issues
 
 
@@ -195,14 +195,14 @@ Run procedure `{proc.name}` (version {proc.version}) and write the report to `{r
 
 
 def gate(brain: Brain) -> None:
-    """Raise if knowledge still awaits review, naming who has to act."""
-    scan = review.scan(brain)
+    """Raise if knowledge still awaits approval, naming who has to act."""
+    scan = approval.team_status(brain)
     if not scan["pending"]:
         return
-    who = [f"{name} ({len(items)})" for name, items in scan["reviewers"].items() if items]
+    who = [f"{name} ({len(items)})" for name, items in scan["approvers"].items() if items]
     who += [f"unassigned ({len(scan['unassigned'])})"] if scan["unassigned"] else []
-    raise ProcedureError(f"{scan['pending']} item(s) await review: {', '.join(who)}. "
-                         "See `brainforge review status`, or run with --allow-pending.")
+    raise ProcedureError(f"{scan['pending']} item(s) await approval: {', '.join(who)}. "
+                         "See `brainforge pending --team`, or run with --allow-pending.")
 
 
 def run(brain: Brain, proc: Procedure, cfg: AgentConfig, *, instruction: str | None = None,
@@ -216,9 +216,9 @@ def run(brain: Brain, proc: Procedure, cfg: AgentConfig, *, instruction: str | N
         raise ProcedureError(f"{report_rel} already exists; use --force to regenerate it")
     if proc.output.format != "markdown" and not shutil.which("pandoc"):
         raise ProcedureError(f"output format '{proc.output.format}' needs pandoc (https://pandoc.org/installing.html)")
-    if proc.audience and proc.audience not in brain.manifest.visibility:
-        raise ProcedureError(f"audience '{proc.audience}' is not a visibility level in brain.yaml")
-    if proc.require_review and not allow_pending:
+    if proc.audience and proc.audience not in brain.manifest.audiences:
+        raise ProcedureError(f"audience '{proc.audience}' is not in brain.yaml audiences")
+    if proc.require_approval and not allow_pending:
         gate(brain)
 
     history = [p for _, p in reports(brain, proc) if p != report]
@@ -243,7 +243,7 @@ def run(brain: Brain, proc: Procedure, cfg: AgentConfig, *, instruction: str | N
             allowed: set[str] | None = None
             if proc.audience:
                 # The agent works on a copy with only what this audience may see; nothing else comes back.
-                with review.view(brain, proc.audience, [previous] if previous else []) as (view_root, allowed):
+                with approval.view(brain, proc.audience, [previous] if previous else []) as (view_root, allowed):
                     changed = [p for p in changed if p in allowed] if changed is not None else None
                     agents.run(cfg, build_prompt(brain, proc, layers, report_rel, previous, changed), view_root, write=True)
                     if (view_root / report_rel).is_file():

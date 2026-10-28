@@ -43,7 +43,7 @@ def test_list_search_read(brains):
     hits = mcp_server.search(brains, "go-live")
     assert hits[0] == {"brain": "test", "path": "knowledge/milestones/go-live.md", "title": "Go-live",
                        "type": "Milestone", "description": "Production go-live of the platform.",
-                       "review": "confirmed", "url": hits[0]["url"], "score": hits[0]["score"]}
+                       "approval": "approved", "url": hits[0]["url"], "score": hits[0]["score"]}
     assert hits[0]["url"].startswith("obsidian://open?path=") and hits[0]["url"].endswith("go-live.md")
     assert mcp_server.search(brains, "", type="Risk") == []
 

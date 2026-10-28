@@ -75,8 +75,8 @@ def ingest() -> None:
         statements.append(f"- {name}: {value or 'mentioned'}.[^{sid}]")
         notes = "\n".join(f"[^{s['id']}]: {s.get('title', s['id'])}" for s in c.sources())
         c.body = "# Statements\n\n" + "\n".join(statements) + "\n\n" + notes
-        if mode == "self-confirm":
-            c.meta.update(review="confirmed", visibility="client")
+        if mode == "self-approve":
+            c.meta.update(approval="approved", audience="client")
         okf.write(c)
     print("ingested")
 

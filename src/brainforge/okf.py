@@ -17,7 +17,7 @@ import yaml
 OKF_VERSION = "0.2"
 RESERVED = {"index.md", "log.md"}
 STATUSES = {"draft", "stable", "deprecated"}
-REVIEW_STATES = ("proposed", "confirmed", "discarded")  # BrainForge profile, see docs/knowledge-profile.md
+APPROVAL_STATES = ("pending", "approved", "discarded")  # BrainForge profile, see docs/knowledge-profile.md
 
 GROUP_DESCRIPTIONS = {
     "sources": "Ingested source documents and their provenance.",
@@ -193,8 +193,8 @@ def validate_concept(path: Path, bundle: Path) -> list[Issue]:
         err("missing required 'type'")
     if c.meta.get("status", "stable") not in STATUSES:
         err(f"status must be one of {sorted(STATUSES)}")
-    if c.meta.get("review", "confirmed") not in REVIEW_STATES:
-        err(f"review must be one of {list(REVIEW_STATES)}")
+    if c.meta.get("approval", "approved") not in APPROVAL_STATES:
+        err(f"approval must be one of {list(APPROVAL_STATES)}")
 
     generated = c.meta.get("generated")
     if generated is not None:
@@ -326,7 +326,7 @@ def search(
     type: str | None = None,
     tag: str | None = None,
     status: str | None = None,
-    review: str | None = None,
+    approval: str | None = None,
     links_to: str | None = None,
     linked_from: str | None = None,
 ) -> list[tuple[int, Concept]]:
@@ -350,8 +350,8 @@ def search(
             continue
         if status and c.meta.get("status", "stable") != status:
             continue
-        state = c.meta.get("review") or "confirmed"
-        if (review and state != review) or (not review and state == "discarded"):
+        state = c.meta.get("approval") or "approved"
+        if (approval and state != approval) or (not approval and state == "discarded"):
             continue
         if links_to and target(links_to) not in links(c, bundle):
             continue

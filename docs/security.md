@@ -15,13 +15,13 @@ BrainForge processes confidential documents with LLM agents. This document descr
   - the result must be valid OKF.
 - Anything else rolls the whole run back.
 
-**Residual risk:** an injected document can still plant false "facts" that are attributed to that document. Provenance makes them traceable, and every item the agent creates or changes stays `proposed` until a person confirms it. The agent cannot confirm its own output: BrainForge overwrites `review` and `visibility` after every run.
+**Residual risk:** an injected document can still plant false "facts" that are attributed to that document. Provenance makes them traceable, and every item the agent creates or changes stays `pending` until a person approves it. The agent cannot approve its own output: BrainForge overwrites `approval` and `audience` after every run.
 
-## Visibility: what an audience sees
+## Audiences: what a report or query may see
 
-- Reports and queries for an audience (`audience: client` in a procedure, `--audience client` on a query) run the agent on a throwaway copy of the brain that holds only confirmed concepts at that level or more open. Index files are rebuilt for the copy; the archive, log and configuration are left out.
+- Reports and queries for an audience (`audience: client` in a procedure, `--audience client` on a query) run the agent on a throwaway copy of the brain that holds only approved concepts meant for that audience or a wider one. Index files are rebuilt for the copy; the archive, log and configuration are left out.
 - After a report, BrainForge rejects it if it cites any concept outside that set.
-- **Residual risk:** the copy is a separate folder, not a sandbox. The agent isn't told where the brain is, but file tools could read outside the copy if it went looking. The citation check catches cited leaks, not paraphrased ones. Visibility is only as good as the reviewer's choice of level.
+- **Residual risk:** the copy is a separate folder, not a sandbox. The agent isn't told where the brain is, but file tools could read outside the copy if it went looking. The citation check catches cited leaks, not paraphrased ones. An audience is only as good as the approver's choice.
 
 ## Data leaves your machine only through the agent you chose
 

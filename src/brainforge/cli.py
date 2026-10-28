@@ -11,7 +11,7 @@ from typing import Annotated, Any
 import typer
 from typer.exceptions import TyperException
 
-from brainforge import agents, gitops, ingest, integrations, okf, parsers, procedures, query, review, schedule
+from brainforge import agents, approval, gitops, ingest, integrations, okf, parsers, procedures, query, schedule
 from brainforge import brain as brain_mod
 from brainforge.brain import Brain, BrainError
 
@@ -25,9 +25,8 @@ schedule_app = typer.Typer(no_args_is_help=True, help="Run scheduled procedures 
 ci_app = typer.Typer(no_args_is_help=True, help="GitHub Actions integration.")
 skills_app = typer.Typer(no_args_is_help=True, help="Install BrainForge skills for coding agents.")
 workspace_app = typer.Typer(no_args_is_help=True, help="Open the brain in Obsidian.")
-review_app = typer.Typer(no_args_is_help=True, help="Review proposed knowledge: your queue, who is pending, decide.")
 for sub, name in [(brain_app, "brain"), (knowledge_app, "knowledge"), (inbox_app, "inbox"),
-                  (review_app, "review"), (procedures_app, "procedures"), (schedule_app, "schedule"),
+                  (procedures_app, "procedures"), (schedule_app, "schedule"),
                   (ci_app, "ci"), (skills_app, "skills"), (workspace_app, "workspace")]:
     app.add_typer(sub, name=name)
 
@@ -107,9 +106,9 @@ def brain_validate() -> None:
     issues += [okf.Issue(i.level, f"knowledge/{i.path}", i.message) for i in okf.validate_bundle(b.knowledge)]
     issues += procedures.load_all(b)[1]
     issues += [okf.Issue("warning", b.rel(p), "sidecar without a matching document") for p in ingest.inbox_documents(b)[1]]
-    levels = b.manifest.visibility
-    issues += [okf.Issue("error", b.rel(c.path), f"visibility '{c.meta['visibility']}' is not one of {levels}")
-               for c in okf.read_all(b.knowledge) if levels and "visibility" in c.meta and c.meta["visibility"] not in levels]
+    levels = b.manifest.audiences
+    issues += [okf.Issue("error", b.rel(c.path), f"audience '{c.meta['audience']}' is not one of {levels}")
+               for c in okf.read_all(b.knowledge) if levels and "audience" in c.meta and c.meta["audience"] not in levels]
     raise typer.Exit(emit_issues(issues, f"Brain '{b.id}' is valid."))
 
 
@@ -181,7 +180,7 @@ def knowledge_search(
     type_: Annotated[str | None, typer.Option("--type", help="OKF type, e.g. Decision.")] = None,
     tag: Annotated[str | None, typer.Option(help="Tag.")] = None,
     status: Annotated[str | None, typer.Option(help="draft, stable or deprecated.")] = None,
-    review_: Annotated[str | None, typer.Option("--review", help="proposed, confirmed or discarded "
+    approval_: Annotated[str | None, typer.Option("--approval", help="pending, approved or discarded "
                                                 "(default: everything but discarded).")] = None,
     links_to: Annotated[str | None, typer.Option("--links-to", help="Concepts linking to this concept id.")] = None,
     linked_from: Annotated[str | None, typer.Option("--linked-from", help="Concepts this concept id links to.")] = None,
@@ -189,11 +188,11 @@ def knowledge_search(
 ) -> None:
     """Deterministic search over the knowledge bundle (no agent)."""
     b = current()
-    hits = okf.search(b.knowledge, text, type=type_, tag=tag, status=status, review=review_, links_to=links_to,
+    hits = okf.search(b.knowledge, text, type=type_, tag=tag, status=status, approval=approval_, links_to=links_to,
                       linked_from=linked_from)[:limit]
-    data = [{"path": b.rel(c.path), "id": okf.concept_id(b.knowledge, c.path), "url": review.url(c.path),
+    data = [{"path": b.rel(c.path), "id": okf.concept_id(b.knowledge, c.path), "url": approval.url(c.path),
              "type": c.meta.get("type"), "title": c.title, "description": c.description,
-             "review": review.state(c), "visibility": review.level(b, c), "score": s} for s, c in hits]
+             "approval": approval.state(c), "audience": approval.audience_of(b, c), "score": s} for s, c in hits]
     emit(data, "\n".join(f"{d['path']}  [{d['type']}] {d['title']}" + (f" — {d['description']}" if d["description"] else "")
                          for d in data) or "No matches.")
 
@@ -202,8 +201,8 @@ def knowledge_search(
 def knowledge_query(
     question: Annotated[str, typer.Argument(help="Question to answer from the knowledge.")],
     instruction: InstructionOpt = None,
-    audience: Annotated[str | None, typer.Option(help="Answer only from confirmed knowledge this "
-                                                 "visibility level may see.")] = None,
+    audience: Annotated[str | None, typer.Option(help="Answer only from approved knowledge "
+                                                 "meant for this audience (one of brain.yaml audiences).")] = None,
     agent: AgentOpt = None,
     model: ModelOpt = None,
 ) -> None:
@@ -230,9 +229,9 @@ def knowledge_index() -> None:
     emit([b.rel(p) for p in changed], f"Rebuilt {len(changed)} index file(s).")
 
 
-# --- review ------------------------------------------------------------------------------------
+# --- approval ----------------------------------------------------------------------------------
 
-ItemsArg = Annotated[list[str], typer.Argument(help="Concept ids or paths, e.g. actions/send-slides.")]
+ItemsArg = Annotated[list[str], typer.Argument(help="Concept ids or paths, e.g. milestones/go-live.")]
 
 
 def _item_line(d: dict) -> str:
@@ -242,41 +241,42 @@ def _item_line(d: dict) -> str:
         f"  ({', '.join(e for e in extra if e)})" if any(extra) else "")
 
 
-@review_app.command("list")
-def review_list(
-    for_: Annotated[str | None, typer.Option("--for", help="Another team member's queue (name or email).")] = None,
-    all_: Annotated[bool, typer.Option("--all", help="Everything that awaits review.")] = False,
+def _team_lines(b: Brain, status: dict) -> list[str]:
+    lines = [f"{status['pending']} item(s) await approval"
+             + (f" (oldest: {status['oldest_days']} day(s))" if status["pending"] else ".")]
+    width = max([len(n) for n in status["approvers"]] + [10])
+    for name, items in [*status["approvers"].items(), *([("unassigned", status["unassigned"])] if status["unassigned"] else [])]:
+        listing = f"{len(items):>3}  " + ", ".join(okf.concept_id(b.knowledge, b.root / p) for p in items) if items else "  done"
+        lines.append(f"  {name:<{width}} {listing}")
+    return lines
+
+
+@app.command("pending")
+def pending_cmd(
+    team: Annotated[bool, typer.Option("--team", help="Per team member: who still has items to approve.")] = False,
+    for_: Annotated[str | None, typer.Option("--for", help="Another team member's items (name or email).")] = None,
+    all_: Annotated[bool, typer.Option("--all", help="Every pending item.")] = False,
+    check: Annotated[bool, typer.Option("--check", help="Exit 1 if anything is pending.")] = False,
 ) -> None:
-    """Your review queue: proposed knowledge you are the reviewer for (+ new, ~ changed)."""
+    """Knowledge awaiting approval: yours by default (+ new, ~ changed); --team shows who still has to act."""
     b = current()
+    if team:
+        status = approval.team_status(b)
+        emit(status, "\n".join(_team_lines(b, status)))
+        raise typer.Exit(1 if check and status["pending"] else 0)
     who = None
     if b.manifest.team and not all_:
         if for_:
             who = next((m for m in b.manifest.team if for_.lower() in (m.name.lower(), (m.email or "").lower())), None)
             if not who:
                 raise BrainError(f"no team member '{for_}' in brain.yaml")
-        elif not (who := review.me(b)):
+        elif not (who := approval.me(b)):
             raise BrainError(f"you ({gitops.user(b.root) or 'no git user'}) are not on the brain.yaml team; "
-                             "use --all or --for NAME")
-    items = [i.as_dict(b) for i in review.queue(b, who)]
-    head = f"{len(items)} item(s) to review" + (f" for {who.name}" if who else "")
+                             "use --all, --team or --for NAME")
+    items = [i.as_dict(b) for i in approval.pending_for(b, who)]
+    head = f"{len(items)} item(s) awaiting approval" + (f" by {who.name}" if who else "")
     emit(items, "\n".join([head + (":" if items else "."), *map(_item_line, items)]))
-
-
-@review_app.command("status")
-def review_status(
-    check: Annotated[bool, typer.Option("--check", help="Exit 1 if anything awaits review.")] = False,
-) -> None:
-    """Who still has to review what, e.g. before a status meeting or a report."""
-    b = current()
-    scan = review.scan(b)
-    lines = [f"{scan['pending']} item(s) await review" + (f" (oldest: {scan['oldest_days']} day(s))" if scan["pending"] else ".")]
-    width = max([len(n) for n in scan["reviewers"]] + [10])
-    for name, items in [*scan["reviewers"].items(), *([("unassigned", scan["unassigned"])] if scan["unassigned"] else [])]:
-        listing = f"{len(items):>3}  " + ", ".join(okf.concept_id(b.knowledge, b.root / p) for p in items) if items else "  done"
-        lines.append(f"  {name:<{width}} {listing}")
-    emit(scan, "\n".join(lines))
-    raise typer.Exit(1 if check and scan["pending"] else 0)
+    raise typer.Exit(1 if check and items else 0)
 
 
 def _decide(b: Brain, verb: str, paths: list[Path], lines: list[str], no_commit: bool, push: bool) -> None:
@@ -284,36 +284,36 @@ def _decide(b: Brain, verb: str, paths: list[Path], lines: list[str], no_commit:
     sha = None
     if wants_commit(b, no_commit):
         ids = [okf.concept_id(b.knowledge, p) for p in paths]
-        sha = gitops.commit(b.root, f"review: {verb} {', '.join(ids[:3])}{' …' if len(ids) > 3 else ''}\n\n"
+        sha = gitops.commit(b.root, f"{verb}: {', '.join(ids[:3])}{' …' if len(ids) > 3 else ''}\n\n"
                             + "\n".join(f"- {line}" for line in lines), rels)
         if push:
             gitops.push(b.root)
     emit({"items": rels, "commit": sha}, "\n".join(lines) + (f"\n[{sha[:8]}]" if sha else ""))
 
 
-@review_app.command("confirm")
-def review_confirm(
+@app.command("approve")
+def approve_cmd(
     items: ItemsArg,
-    visibility: Annotated[str | None, typer.Option("--visibility", "-v", help="Also set the visibility level.")] = None,
+    audience: Annotated[str | None, typer.Option("--audience", "-a", help="Also set who may see it.")] = None,
     no_commit: NoCommitOpt = False,
     push: PushOpt = False,
 ) -> None:
-    """Confirm proposed knowledge (records you in OKF `verified`)."""
+    """Approve pending knowledge (records you in OKF `verified`)."""
     b = current()
     if push:
         gitops.pull(b.root)
-    paths = review.confirm(b, items, visibility)
-    _decide(b, "confirm", paths, [f"confirmed {okf.concept_id(b.knowledge, p)}" + (f" as {visibility}" if visibility else "")
+    paths = approval.approve(b, items, audience)
+    _decide(b, "approve", paths, [f"approved {okf.concept_id(b.knowledge, p)}" + (f" for {audience}" if audience else "")
                                   for p in paths], no_commit, push)
 
 
-@review_app.command("discard")
-def review_discard(items: ItemsArg, no_commit: NoCommitOpt = False, push: PushOpt = False) -> None:
-    """Discard proposed knowledge: a change is undone, a new item is kept only as a hidden tombstone."""
+@app.command("discard")
+def discard_cmd(items: ItemsArg, no_commit: NoCommitOpt = False, push: PushOpt = False) -> None:
+    """Discard pending knowledge: a change is undone, a new item is kept only as a hidden tombstone."""
     b = current()
     if push:
         gitops.pull(b.root)
-    done = review.discard(b, items)
+    done = approval.discard(b, items)
     _decide(b, "discard", [p for p, _ in done], [f"{okf.concept_id(b.knowledge, p)}: {what}" for p, what in done],
             no_commit, push)
 
@@ -347,7 +347,7 @@ def run_cmd(
     instruction: InstructionOpt = None,
     force: Annotated[bool, typer.Option("--force", help="Overwrite an existing report for this period.")] = False,
     allow_pending: Annotated[bool, typer.Option("--allow-pending", help="Run even if the procedure requires "
-                                                "review and knowledge still awaits it.")] = False,
+                                                "approval and knowledge still awaits it.")] = False,
     no_commit: NoCommitOpt = False,
     push: PushOpt = False,
     agent: AgentOpt = None,

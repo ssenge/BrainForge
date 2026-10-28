@@ -34,7 +34,7 @@ def _merge_json(path: Path, update: dict) -> None:
     path.write_text(json.dumps({**data, **update}, indent=2) + "\n", encoding="utf-8")
 
 
-GRAPH_FILTER = "path:knowledge/ -file:index.md -file:log.md -[review:discarded]"
+GRAPH_FILTER = "path:knowledge/ -file:index.md -file:log.md -[approval:discarded]"
 
 
 def obsidian_config(brain: Brain) -> Path:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from brainforge import agents, gitops, review
+from brainforge import agents, approval, gitops
 from brainforge.brain import AgentConfig, Brain, Layer, blob_hash, instruction_layers, render_layers
 
 CITATION_RE = re.compile(r"\((?:\./)?(knowledge/[^)\s#]+\.md)(?:#[^)]*)?\)|`(knowledge/[^`\s]+\.md)`")
@@ -23,7 +23,7 @@ def query(brain: Brain, question: str, cfg: AgentConfig, *, instruction: str | N
 {question}
 """
     if audience:  # answer from a copy that holds only what this audience may see
-        with review.view(brain, audience) as (root, allowed):
+        with approval.view(brain, audience) as (root, allowed):
             answer = agents.run(cfg, prompt, root, write=False).strip()
     else:
         allowed = None

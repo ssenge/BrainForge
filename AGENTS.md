@@ -27,7 +27,7 @@ Run all three checks before you commit. They are all clean on `main`.
 | `src/brainforge/agents.py` | Agent adapters (`claude`, `codex`, `command`) and the exact CLI flags they run with |
 | `src/brainforge/gitops.py` | Thin wrapper around the `git` CLI: status, commit, rollback, pull/push, lock |
 | `src/brainforge/parsers.py` | PDF/DOCX/PPTX/HTML/MD → text with page and slide markers |
-| `src/brainforge/review.py` | Review status, reviewer routing, the pending-review scanner, audience views |
+| `src/brainforge/approval.py` | Approval status, approver routing, the pending scanner, audience views |
 | `src/brainforge/query.py` | Read-only question answering by an agent, with citation checks |
 | `src/brainforge/procedures.py` | Markdown procedures → reports (pandoc for DOCX/PPTX/HTML/PDF) |
 | `src/brainforge/schedule.py` | `schedule tick`, plus generators for cron entries and GitHub workflows |
@@ -43,7 +43,7 @@ Run all three checks before you commit. They are all clean on `main`.
 - **One commit per document or report**, with `BrainForge-*` trailers. Commit only the paths the run touched. Never force-push.
 - **Idempotency** comes from the SHA-256 of the document bytes. The ledger is the set of committed source concepts (`knowledge/sources/*.md`, `brainforge.sha256`). No other state store.
 - **Deterministic code checks every agent run.** After a run, `git status` must show changes only in `knowledge/` (for reports, only the report file), no deletions, valid OKF, every changed concept citing the new source, and old provenance kept. Keep LLM behavior out of the deterministic modules.
-- **People confirm, not agents.** After every agent run BrainForge sets `review: proposed` and restores `visibility`; the agent's values never survive. Audience-restricted reports and queries run on `review.view`, a copy holding only what that audience may see.
+- **People approve, not agents.** After every agent run BrainForge sets `approval: pending` and restores `audience`; the agent's values never survive. Audience-restricted reports and queries run on `approval.view`, a copy holding only what that audience may see.
 - **Documents are untrusted data.** They go inside a `<document>` block, and `data/policy.md` is always the first, non-overridable instruction layer.
 - **BrainForge never handles credentials.** Agent CLIs log themselves in. Don't read, store, log or pass API keys.
 - **Agent isolation:** Claude Code runs with `--bare` (API key) or `--setting-sources "" --strict-mcp-config` (subscription), and with file tools only. Keep it that way.

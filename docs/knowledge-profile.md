@@ -68,11 +68,11 @@ Integration testing starts on 2026-11-17.[^meeting]
 ## Trust
 
 - `generated` is stamped by BrainForge: `by: brainforge/<model>` and `at`.
-- `review` (BrainForge profile) is `proposed`, `confirmed` or `discarded`; a concept without it counts as confirmed. BrainForge sets every concept an ingestion creates or changes to `proposed`, whatever the agent wrote.
-- `brainforge review confirm <concept>` sets `confirmed` and adds `verified: {by: human:<git user>, at}`, which raises the concept's OKF trust tier to *human-reviewed*.
-- `brainforge review discard <concept>` undoes a proposed change by restoring the last confirmed version from git. A new concept becomes a tombstone (`review: discarded`), so the agent doesn't create it again; search, reports and the Obsidian graph hide it.
-- `visibility` is one of the brain's levels (see [brain-manifest.md](brain-manifest.md)). BrainForge keeps the value people set and gives new concepts the most restricted level; the agent can't change it.
-- `owner` names who is responsible, as the document says it. Reviews are routed by it.
+- `approval` (BrainForge profile) is `pending`, `approved` or `discarded`; a concept without it counts as approved. BrainForge sets every concept an ingestion creates or changes to `pending`, whatever the agent wrote.
+- `brainforge approve <concept>` sets `approved` and adds `verified: {by: human:<git user>, at}`, which raises the concept to OKF's highest trust tier: a human has verified it.
+- `brainforge discard <concept>` undoes a pending change by restoring the last approved version from git. A new concept becomes a tombstone (`approval: discarded`), so the agent doesn't create it again; search, reports and the Obsidian graph hide it.
+- `audience` is one of the brain's audiences (see [brain-manifest.md](brain-manifest.md)). BrainForge keeps the value people set and gives new concepts the narrowest audience; the agent can't change it.
+- `owner` names who is responsible, as the document says it. Approvals are routed by it.
 
 ## Links
 

@@ -11,7 +11,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
-from brainforge import agents, gitops, okf, parsers, review
+from brainforge import agents, approval, gitops, okf, parsers
 from brainforge.brain import (
     AgentConfig,
     Brain,
@@ -230,7 +230,7 @@ def ingest(
             for p in created + updated:
                 c = okf.read(root / p)
                 c.meta["generated"] = {"by": by, "at": now}
-                review.stamp(brain, c, p)
+                approval.stamp(brain, c, p)
                 okf.write(c)
             _finish_source(source, {
                 "type": "Source Document",
@@ -243,7 +243,7 @@ def ingest(
                 },
             }, created, updated)
             src_concept = okf.read(source)
-            review.stamp(brain, src_concept, brain.rel(source), propose=False)
+            approval.stamp(brain, src_concept, brain.rel(source), propose=False)
             okf.write(src_concept)
 
             dest = root / archive_rel

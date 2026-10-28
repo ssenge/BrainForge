@@ -12,7 +12,7 @@ from typing import Any
 from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 
-from brainforge import __version__, gitops, okf, procedures, review
+from brainforge import __version__, approval, gitops, okf, procedures
 from brainforge.brain import Brain, data_text, instruction_layers
 
 PULL_EVERY = 300  # seconds between `git pull` per brain
@@ -25,7 +25,7 @@ Use `list_brains` to pick the brain (match the user's wording to its id/name) an
 `search` to find concepts, and `read` to open them. Start with `knowledge/index.md` when browsing.
 For status questions, read the latest report (from `list_brains`) and the milestone, risk, decision and action concepts.
 Search results carry a `url` that opens the concept in Obsidian: cite concepts as markdown links to it, e.g. [Go-live](url).
-`review: proposed` means no person has confirmed the concept yet: say so when an answer rests on it.
+`approval: pending` means no person has approved the concept yet: say so when an answer rests on it.
 
 """
 
@@ -89,8 +89,8 @@ def search(brains: Brains, query: str = "", brain: str | None = None, type: str 
     ]
     hits.sort(key=lambda h: -h[0])
     return [
-        {"brain": b.id, "path": b.rel(c.path), "url": review.url(c.path), "title": c.title, "type": c.meta.get("type"),
-         "description": c.description, "review": review.state(c), "score": score}
+        {"brain": b.id, "path": b.rel(c.path), "url": approval.url(c.path), "title": c.title, "type": c.meta.get("type"),
+         "description": c.description, "approval": approval.state(c), "score": score}
         for score, b, c in hits[:limit]
     ]
 

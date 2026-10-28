@@ -5,5 +5,5 @@
 - If the knowledge does not contain the answer, say so explicitly: "Not in the knowledge base: …". Never fill gaps from general knowledge.
 - Make history and conflicts visible, e.g. "currently 2026-11-17; previously planned for 2026-11-10".
 - Prefix any conclusion that is not stated directly with "Derived:".
-- Concepts with `review: proposed` are not confirmed by a person yet: mark what rests on them as "(unconfirmed)". Ignore concepts with `review: discarded`.
+- Concepts with `approval: pending` are not approved by a person yet: mark what rests on them as "(unconfirmed)". Ignore concepts with `approval: discarded`.
 - Do not create or modify any file.
