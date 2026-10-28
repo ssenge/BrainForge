@@ -27,7 +27,7 @@ BrainForge turns documents into a structured, versioned knowledge base, called a
 | **Serverless, local-first** | No application server, database, vector store, registry or always-on agent. Cron and GitHub Actions are optional triggers. |
 | **Secure by design** | Documents are treated as untrusted data, which defends against prompt injection. Agents get least-privilege tools (files only, no shell, no network) and run isolated from personal agent configs. An `allowed` list restricts which providers see the data. BrainForge never force-pushes. |
 | **Human in the loop** | Review the knowledge in Git, and mark concepts as human-verified with `brainforge knowledge verify`. |
-| **Agent skills** | One command installs a Claude Code or Codex skill, so your coding agent can search, query and ingest for you. |
+| **Agent skills and MCP** | One command installs a Claude Code or Codex skill, and `brainforge mcp` serves brains read-only to Claude Desktop or any MCP client. See [Ask your brain](#ask-your-brain-from-claude-desktop-or-any-agent). |
 | **Knowledge graph** | Open the brain as an Obsidian vault, with a graph view colored by concept type. |
 | **Hierarchical and federated** *(roadmap)* | Brains form a tree across repositories, with instruction inheritance and federated, permission-aware queries. See the [Roadmap](#roadmap-a-hierarchy-of-brains). |
 
@@ -157,6 +157,7 @@ With `adapter: command`, any program works. It receives the prompt on stdin, run
 | `ci install` | GitHub Actions workflow for inbox ingestion |
 | `skills install claude\|codex [--user]` | Agent skill that wraps the CLI |
 | `workspace open` | Open the brain as an Obsidian vault |
+| `mcp [BRAIN_DIR…]` | Serve one or more brains read-only over MCP, for Claude Desktop and other MCP clients |
 
 Global options:
 - `--brain PATH`: by default the brain is found from the current directory upwards, the way git finds its repo.
@@ -170,6 +171,87 @@ Exit codes:
 | 1 | failure |
 | 2 | usage or config error |
 | 3 | partial failure |
+
+## Ask your brain from Claude Desktop or any agent
+
+A brain is plain Markdown in Git, so any agent that can read a local clone can answer from it. You can ask questions like *"What is the current project status for client A in project 1?"* in three ways:
+
+| | Option | Best for | Setup |
+|---|---|---|---|
+| **A** | **Agent skill** | Claude Code (terminal, IDE or the Claude Desktop **Code** tab) and Codex | `brainforge skills install claude --user` (or `codex`) |
+| **B** | **Generic file access** | any MCP client, with no BrainForge install | the standard filesystem MCP server, pointed at the clone |
+| **C** | **`brainforge mcp`** (recommended) | Claude Desktop **Chat**, and any MCP client | one entry in the client's MCP config |
+
+All three read the local clone. Ingestion usually happens in CI, so the clone has to stay current:
+- **A and B:** run `git pull` yourself.
+- **C:** the server does a `git pull --ff-only` at most every 5 minutes.
+
+### A. Agent skill (Claude Code, Codex)
+
+```bash
+brainforge skills install claude --user    # ~/.claude/skills/brainforge; `codex` → ~/.agents/skills
+```
+
+Open the brain folder in Claude Code. In Claude Desktop, use the **Code** tab, which runs Claude Code locally. Then ask in plain language. The agent uses `brainforge knowledge search`, reads the concepts and cites them. Because the skill wraps the whole CLI, it can also ingest documents and run procedures for you.
+
+Skills in Claude Desktop's **Chat** tab run in a cloud sandbox and cannot see local files; use C there.
+
+### B. Generic file access (filesystem MCP server)
+
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) and restart Claude Desktop:
+
+```json
+{
+  "mcpServers": {
+    "brains": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/Users/you/brains/client-a-project-1"]
+    }
+  }
+}
+```
+
+Claude navigates from `knowledge/index.md` and follows the links. This needs no BrainForge code, but:
+- Claude has to find its way through the files by itself;
+- that server also offers write tools;
+- the clone is not kept up to date.
+
+### C. `brainforge mcp` (recommended)
+
+A read-only MCP server over stdio. Claude Desktop does the reasoning; BrainForge serves the knowledge deterministically, with no second agent run in between.
+
+```json
+{
+  "mcpServers": {
+    "brainforge": {
+      "command": "/Users/you/.local/bin/brainforge",
+      "args": ["mcp", "/Users/you/brains/client-a-project-1", "/Users/you/brains/client-b-project-2"]
+    }
+  }
+}
+```
+
+Use the absolute path from `which brainforge`, because desktop apps don't inherit your shell's `PATH`. Then restart Claude Desktop.
+
+| Tool | What it does |
+|---|---|
+| `list_brains` | Ids and names, so "client A, project 1" resolves to `client-a/project-1`. Also returns the concept count, the latest report per procedure, the brain's own instructions and any sync error. |
+| `search` | Deterministic search by words, OKF type (`Milestone`, `Risk`, `Decision`, …) and tag, across one or all brains. |
+| `read` | A concept, `knowledge/index.md` or a report. Access is limited to `knowledge/` and `reports/`. |
+
+The server also passes BrainForge's query rules to Claude:
+- answer only from the brain, and cite concept paths;
+- answer "Not in the knowledge base" when the brain lacks the information;
+- mark conclusions with `Derived:`.
+
+For a status question, Claude reads the latest weekly report plus the milestone, risk and decision concepts, and answers with links to them.
+
+Options:
+- `--no-pull` disables the automatic sync.
+- Without arguments, the server serves the brain in the current directory.
+- Pulling a private repository uses your normal git credentials (keychain or SSH agent).
+
+**Phase A note:** the server serves several independent brains side by side. A roll-up across a client's projects, such as "status of all client A projects", needs the brain hierarchy; see the [Roadmap](#roadmap-a-hierarchy-of-brains).
 
 ## Roadmap: a hierarchy of brains
 

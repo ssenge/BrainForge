@@ -364,6 +364,20 @@ def workspace_open(
          f"Obsidian vault: {b.root}" + (f"\nOpened {url} (if nothing happens: Obsidian → Open folder as vault)" if url else ""))
 
 
+@app.command()
+def mcp(
+    brains: Annotated[list[Path] | None, typer.Argument(help="Brain directories (default: the current brain).")] = None,
+    pull: Annotated[bool, typer.Option("--pull/--no-pull", help="git pull --ff-only every 5 minutes.")] = True,
+) -> None:
+    """Serve brains read-only over MCP (stdio) for Claude Desktop and other MCP clients."""
+    from brainforge import mcp_server  # the MCP SDK is only needed here
+
+    roots = [brain_mod.find(p) for p in brains] if brains else [current()]
+    if len({b.id for b in roots}) < len(roots):
+        raise BrainError("two brains share the same id")
+    mcp_server.serve(roots, pull)
+
+
 # --- entry point -------------------------------------------------------------------------------
 
 def run(argv: list[str] | None = None) -> int:
