@@ -473,7 +473,7 @@ Phase A already prepares for this:
 Further out:
 - an optional registry or discovery service;
 - knowledge projections: standardized views, such as a project-status schema, derived from the knowledge;
-- ranked retrieval (BM25 or embeddings) for large hierarchies. Details are in [`concept/implementation-plan.md`](concept/implementation-plan.md) and [`concept/idea.md`](concept/idea.md).
+- ranked retrieval (BM25 or embeddings) for large hierarchies.
 
 ## Documentation
 
@@ -482,7 +482,6 @@ Further out:
 - [Procedures and reports](docs/procedures.md)
 - [Automation: GitHub Actions and cron](docs/automation.md)
 - [Security model](docs/security.md)
-- Concept and plan: [`concept/`](concept/)
 
 ## Development
 

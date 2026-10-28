@@ -34,7 +34,6 @@ Run all three checks before you commit. They are all clean on `main`.
 | `src/brainforge/integrations.py` | Agent skill install, Obsidian vault config |
 | `src/brainforge/data/` | All prompts and templates: `policy.md` (non-overridable), `ingestion.md`, `query.md`, `reporting.md`, `init/`, `workflows/`, `skills/` |
 | `tests/` | pytest; `fake_agent.py` is a deterministic stand-in for the agent CLI |
-| `concept/` | `idea.md` (original spec), `user-journeys.md`, `implementation-plan.md` (decisions D1–D12, slices, status) |
 | `docs/` | User docs: knowledge profile, manifest, procedures, automation, security |
 
 ## Invariants: don't break these

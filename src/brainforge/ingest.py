@@ -1,6 +1,6 @@
 """Ingestion: one document in, cited OKF concepts out, one commit.
 
-The agent edits the brain repo in place; git is the undo. See concept/implementation-plan.md (D1, D12).
+The agent edits the brain repo in place; git is the undo.
 """
 
 from __future__ import annotations
