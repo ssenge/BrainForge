@@ -53,6 +53,8 @@ def test_force_reuses_the_same_source_concept(brain, tmp_path):
     forced = ingest.ingest(brain, doc, cfg(brain), force=True)
     assert forced.status == "ingested" and forced.source == first.source
     assert len(okf.concept_files(brain.knowledge / "sources")) == 1
+    archived = next((brain.root / "archive").glob("*/a.md"))
+    assert ingest.ingest(brain, archived, cfg(brain), force=True).status == "ingested"  # the archived copy itself
 
 
 @pytest.mark.parametrize("mode,reason", [

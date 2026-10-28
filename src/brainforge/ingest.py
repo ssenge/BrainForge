@@ -257,7 +257,7 @@ def ingest(
                 if src.is_relative_to(inbox):
                     shutil.move(src, dst)
                     moved.append((src, dst))
-                else:
+                elif src.resolve() != dst.resolve():  # --force on the archived copy itself
                     shutil.copy2(src, dst)
 
             okf.write_indexes(brain.knowledge)
