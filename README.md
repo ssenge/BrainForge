@@ -424,7 +424,7 @@ With `adapter: command`, any program works. It receives the prompt on stdin, run
 | Command | Purpose |
 |---|---|
 | `init [DIR]` | Create a brain |
-| `brain show`, `brain validate` | Summary; validate manifest, layout, knowledge and procedures |
+| `brain show`, `brain validate` | Summary; validate manifest, layout, knowledge, plugin fields and procedures, and warn about isolated concepts and likely duplicates (same title) |
 | `ingest FILE…` | Ingest documents (`--instruction`, `--dry-run`, `--force`, `--no-commit`, `--push`, `--allow-secrets`) |
 | `inbox process` | Ingest everything in `inbox/` |
 | `knowledge search [TEXT]` | Deterministic search (`--type`, `--tag`, `--status`, `--approval`, `--links-to`, `--linked-from`) |

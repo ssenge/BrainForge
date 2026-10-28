@@ -94,3 +94,15 @@ def test_search_by_text_metadata_and_links(tmp_path):
     assert ids(okf.search(root, links_to="entities/alice")) == ["decisions/go-live"]
     assert ids(okf.search(root, linked_from="knowledge/decisions/go-live.md")) == ["entities/alice"]
     assert okf.search(root, "nothing-matches-this") == []
+
+
+def test_graph_issues_find_isolated_concepts_and_likely_duplicates(tmp_path):
+    k = tmp_path / "knowledge"
+    write(k / "sources/doc.md", "---\ntype: Source Document\n---\n[a](../topics/a.md) [lonely](../topics/lonely.md)\n")
+    write(k / "topics/a.md", "---\ntype: Topic\ntitle: Vendor B\n---\nSee [b](../entities/b.md).\n")
+    write(k / "entities/b.md", "---\ntype: Organization\ntitle: vendor  b\n---\nx\n")
+    write(k / "topics/lonely.md", "---\ntype: Topic\ntitle: Lonely\n---\nx\n")
+    write(k / "topics/gone.md", "---\ntype: Topic\ntitle: Gone\napproval: discarded\n---\nx\n")
+    found = sorted((i.path, i.message.split(":")[0]) for i in okf.graph_issues(k))
+    assert found == [("entities/b.md", "same title as topics/a.md"), ("topics/a.md", "same title as entities/b.md"),
+                     ("topics/lonely.md", "isolated")]

@@ -127,10 +127,11 @@ def brain_show() -> None:
 
 @brain_app.command("validate")
 def brain_validate() -> None:
-    """Validate manifest, layout, OKF knowledge and procedures."""
+    """Validate manifest, layout, OKF knowledge, plugin fields, procedures and graph health."""
     b = current()
     issues = brain_mod.check_layout(b)
-    issues += [okf.Issue(i.level, f"knowledge/{i.path}", i.message) for i in okf.validate_bundle(b.knowledge)]
+    issues += [okf.Issue(i.level, f"knowledge/{i.path}", i.message)
+               for i in okf.validate_bundle(b.knowledge) + okf.graph_issues(b.knowledge)]
     issues += procedures.load_all(b)[1]
     known = plugins.types(b)
     issues += [i for p in okf.concept_files(b.knowledge) for i in plugins.check(b, p, known)]

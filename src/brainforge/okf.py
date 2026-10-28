@@ -256,6 +256,29 @@ def validate_bundle(bundle: Path) -> list[Issue]:
     return issues
 
 
+def graph_issues(bundle: Path) -> list[Issue]:
+    """Knowledge-graph health, as warnings: concepts nothing links to or from (source pages, which link to
+    everything they produced, don't count), and concepts sharing a title, likely the same thing twice."""
+    concepts = [c for c in read_all(bundle)
+                if c.path.parent.name != "sources" and c.meta.get("approval") != "discarded"]
+    paths = {c.path.resolve() for c in concepts}
+    linked: set[Path] = set()
+    for c in concepts:
+        if targets := {t for t in links(c, bundle) if t in paths} - {c.path.resolve()}:
+            linked |= targets | {c.path.resolve()}
+    issues = [Issue("warning", c.path.relative_to(bundle).as_posix(), "isolated: no links to or from other concepts")
+              for c in concepts if c.path.resolve() not in linked]
+    by_title: dict[str, list[Concept]] = {}
+    for c in concepts:
+        by_title.setdefault(" ".join(c.title.lower().split()), []).append(c)
+    for same in (group for group in by_title.values() if len(group) > 1):
+        for c in same:
+            others = ", ".join(o.path.relative_to(bundle).as_posix() for o in same if o is not c)
+            issues.append(Issue("warning", c.path.relative_to(bundle).as_posix(),
+                                f"same title as {others}: possibly the same thing twice"))
+    return issues
+
+
 def write_indexes(bundle: Path) -> list[Path]:
     """Regenerate every index.md deterministically. Returns the files that changed."""
     changed = []
