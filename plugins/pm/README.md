@@ -12,7 +12,7 @@ git add plugins && git commit -m "plugin: pm"
 | `plugin.yaml` | Types and their frontmatter fields. `milestones/` Milestone (`date`, `baseline`, `state`), `decisions/` Decision, `actions/` Action Item (`owner`, `due`, `state`), `risks/` Risk, `issues/` Issue, `assumptions/` Assumption, `dependencies/` Dependency, `projects/` Project (`rag`). Values are checked after every ingestion; missing `owner`, `due` or `date` show up as gaps in `brainforge pending`. The project status expires after 14 days, risks, issues and assumptions after 30, and then come back for review. |
 | `instructions/ingestion.md` | How to tell a risk from an issue, keep a milestone's baseline date, and record decisions and commitments. |
 | `instructions/query.md` | Status questions start from the latest status report and name overdue actions. |
-| `procedures/status-report.md` | `brainforge run status-report`: milestones, decisions, open actions, RAID. Uncomment `require_approval`, `audience` or `schedule` as needed. |
+| `procedures/status-report.md` | `brainforge run status-report`: milestones, decisions, open actions, RAID. Uncomment `audience` or `schedule` as needed. |
 | `scripts/overdue.py` | `brainforge plugin run pm overdue [YYYY-MM-DD]`: open actions and dependencies past due, milestones whose date passed. Exits 1 if any, for CI. |
 
 Suggested `brain.yaml` lines, so people approve the project items but not every person or topic page:

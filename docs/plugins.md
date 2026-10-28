@@ -50,7 +50,7 @@ Each field may have:
 - `format: date`: a `YYYY-MM-DD` date;
 - `expected: true`: approvers see a missing value as a gap (`brainforge pending`, the GitHub reminder, Claude).
 
-`stale_after_days` gives the type a review period. Every change to such an item sets OKF `stale_after` to now plus the period. When it passes, the approved item is listed as expired in `brainforge pending`, so its approvers confirm it (approve: a new period starts) or retire it (discard: `status: deprecated`). Approval-gated reports wait for expired items too.
+`stale_after_days` gives the type a review period. Every change to such an item sets OKF `stale_after` to now plus the period. When it passes, the approved item is listed as expired in `brainforge pending`, so its approvers confirm it (approve: a new period starts) or retire it (discard: `status: deprecated`). Reports list expired items in their frontmatter.
 
 Avoid `status` as a field name: OKF uses it for the concept's lifecycle (`draft`, `stable`, `deprecated`). The pm plugin uses `state`.
 

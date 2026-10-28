@@ -11,7 +11,6 @@ agent: claude                    # optional adapter override
 knowledge:
   self: true                     # ancestors/descendants: Phase B
 audience: client                 # optional: one of brain.yaml's audiences
-require_approval: true           # optional: refuse to run while knowledge awaits approval
 output:
   format: markdown               # markdown | docx | pptx | html | pdf
   directory: reports/weekly      # default: reports/<name>
@@ -59,13 +58,15 @@ brainforge:
   previous_report: reports/weekly/2026-10-23.md
   instructions: [framework:policy.md@0.1.0, procedures/weekly-report.md@6ac1…]
   broken_citations: []           # links to concepts that don't exist
+  unapproved: [risks/data-migration-delay]   # awaited approval when the report ran
+  expired: []                    # approved, but past their review date
 ```
 
 To reproduce a report's input, run `git checkout <commit>`.
 
-## Approval gate and audiences
+## Approval and audiences
 
-- **`require_approval: true`** refuses the run while anything awaits approval and names who still has to act, e.g. `3 item(s) await approval: Bob Lee (1), Carol Lead (2)`. Scheduled runs fail the same way, so the report is never built on unapproved knowledge. `brainforge run <name> --allow-pending` overrides it.
+- **Approvals never hold a report back.** Every report lists in its frontmatter what still awaited approval (`unapproved`) and what was past its review date (`expired`) when it ran, and `run` and `schedule tick` print the counts.
 - **`audience: <name>`** builds the report only from approved knowledge meant for that audience or a wider one. The agent works on a throwaway copy that contains just those concepts, with fresh index files and no archive, log or configuration, so internal items aren't there to leak. Afterwards BrainForge rejects the report if it cites any concept outside that set. The report records `audience` in its frontmatter.
 - Without `audience`, reports see everything and mark facts from pending items as "(unconfirmed)".
 

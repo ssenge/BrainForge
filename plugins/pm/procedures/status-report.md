@@ -7,7 +7,6 @@ knowledge:
 output:
   format: markdown
   directory: reports/status
-# require_approval: true   # wait until every pending item is approved
 # audience: client         # only knowledge approved for this audience (brain.yaml audiences)
 # schedule:
 #   cron: "0 8 * * 1"

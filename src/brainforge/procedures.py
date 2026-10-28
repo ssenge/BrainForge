@@ -79,7 +79,6 @@ class Procedure(BaseModel):
     agent: Literal["claude", "codex", "command"] | None = None
     knowledge: Scope = Scope()
     audience: str | None = None  # one of brain.yaml's audiences: the report sees only approved knowledge meant for it
-    require_approval: bool = False  # refuse to run while knowledge awaits approval
     output: Output = Field(default_factory=Output)
     schedule: Schedule | None = None
     path: Path = Field(exclude=True)
@@ -199,19 +198,8 @@ Run procedure `{proc.name}` (version {proc.version}) and write the report to `{r
 """
 
 
-def gate(brain: Brain) -> None:
-    """Raise if knowledge still awaits approval, naming who has to act."""
-    scan = approval.team_status(brain)
-    if not scan["pending"]:
-        return
-    who = [f"{name} ({len(items)})" for name, items in scan["approvers"].items() if items]
-    who += [f"unassigned ({len(scan['unassigned'])})"] if scan["unassigned"] else []
-    raise ProcedureError(f"{scan['pending']} item(s) await approval: {', '.join(who)}. "
-                         "See `brainforge pending --team`, or run with --allow-pending.")
-
-
 def run(brain: Brain, proc: Procedure, cfg: AgentConfig, *, instruction: str | None = None,
-        force: bool = False, commit: bool = True, allow_pending: bool = False, now: datetime | None = None) -> dict:
+        force: bool = False, commit: bool = True, now: datetime | None = None) -> dict:
     root = brain.root
     now = now or datetime.now(UTC)
     date = now.astimezone(proc.tz()).date().isoformat()
@@ -223,8 +211,6 @@ def run(brain: Brain, proc: Procedure, cfg: AgentConfig, *, instruction: str | N
         raise ProcedureError(f"output format '{proc.output.format}' needs pandoc (https://pandoc.org/installing.html)")
     if proc.audience and proc.audience not in brain.manifest.audiences:
         raise ProcedureError(f"audience '{proc.audience}' is not in brain.yaml audiences")
-    if proc.require_approval and not allow_pending:
-        gate(brain)
 
     history = [p for _, p in reports(brain, proc) if p != report]
     previous = history[-1] if history else None
@@ -242,6 +228,10 @@ def run(brain: Brain, proc: Procedure, cfg: AgentConfig, *, instruction: str | N
     layers = instruction_layers(brain, "reporting", extra)
     base = gitops.head(root)
     baseline = gitops.untracked(root)
+    # Approvals never hold a report back; the report records what was still waiting for a person.
+    waiting = approval.pending(brain)
+    unapproved = sorted(okf.concept_id(brain.knowledge, i.concept.path) for i in waiting if not i.expired)
+    expired = sorted(okf.concept_id(brain.knowledge, i.concept.path) for i in waiting if i.expired)
 
     with gitops.lock(root):
         try:
@@ -283,6 +273,8 @@ def run(brain: Brain, proc: Procedure, cfg: AgentConfig, *, instruction: str | N
                     "agent": f"{cfg.adapter}/{cfg.model or 'default'}",
                     "instructions": [layer.source for layer in layers],
                     "broken_citations": broken,
+                    "unapproved": unapproved,
+                    "expired": expired,
                 },
             }
             report.write_text(okf.render(meta, body), encoding="utf-8")
@@ -297,4 +289,10 @@ def run(brain: Brain, proc: Procedure, cfg: AgentConfig, *, instruction: str | N
             gitops.rollback(root, baseline)
             raise
     return {"procedure": proc.name, "report": report_rel, "outputs": outputs, "commit": sha,
-            "cited": len(sources), "broken_citations": broken, "previous": brain.rel(previous) if previous else None}
+            "cited": len(sources), "broken_citations": broken, "previous": brain.rel(previous) if previous else None,
+            "unapproved": unapproved, "expired": expired}
+
+
+def waiting_note(result: dict) -> str:
+    """'3 unapproved, 1 expired' for a run result, or ''."""
+    return ", ".join(f"{len(result[k])} {k}" for k in ("unapproved", "expired") if result.get(k))

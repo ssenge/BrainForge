@@ -388,8 +388,6 @@ def run_cmd(
     procedure: Annotated[str, typer.Argument(help="Procedure name.")],
     instruction: InstructionOpt = None,
     force: Annotated[bool, typer.Option("--force", help="Overwrite an existing report for this period.")] = False,
-    allow_pending: Annotated[bool, typer.Option("--allow-pending", help="Run even if the procedure requires "
-                                                "approval and knowledge still awaits it.")] = False,
     no_commit: NoCommitOpt = False,
     push: PushOpt = False,
     agent: AgentOpt = None,
@@ -403,11 +401,12 @@ def run_cmd(
     if push:
         gitops.pull(b.root)
     start = gitops.head(b.root)
-    result = procedures.run(b, proc, cfg, instruction=instruction, force=force, commit=wants_commit(b, no_commit),
-                            allow_pending=allow_pending)
+    result = procedures.run(b, proc, cfg, instruction=instruction, force=force, commit=wants_commit(b, no_commit))
     if push and result["commit"]:
         gitops.publish(b.root, start)
     text = f"Wrote {', '.join(result['outputs'])} ({result['cited']} cited concepts)"
+    if note := procedures.waiting_note(result):
+        text += f"\nnote: built while items awaited a person ({note}); listed in the report's frontmatter"
     emit(result, text + "".join(f"\nwarning: broken citation {c}" for c in result["broken_citations"]))
 
 
@@ -429,6 +428,7 @@ def schedule_tick(
     if push and any(r.get("commit") for r in results):
         gitops.publish(b.root, start)
     emit(results, "\n".join(f"{r['procedure']}: {r['status']}" + (f" -> {r['report']}" if r.get("report") else "")
+                            + (f" [{note}]" if (note := procedures.waiting_note(r)) else "")
                             + (f" ({r['message']})" if r.get("message") else "") for r in results)
          or "No scheduled procedures.")
     raise typer.Exit(1 if any(r["status"] == "failed" for r in results) else 0)

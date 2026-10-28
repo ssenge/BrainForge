@@ -108,21 +108,24 @@ def test_pending_approve_and_discard(team, tmp_path, run_cli):
     assert run_cli("--brain", team.root, "brain", "validate")[0] == 0
 
 
-PROC = "---\nname: client-status\naudience: client\nrequire_approval: true\n---\nSummarize for the client.\n"
+PROC = "---\nname: client-status\naudience: client\n---\nSummarize for the client.\n"
 
 
-def test_client_report_waits_for_approval_and_sees_only_client_knowledge(team, tmp_path, prompts, monkeypatch):
+def test_client_report_logs_what_awaits_approval_and_sees_only_client_knowledge(team, tmp_path, prompts, monkeypatch):
     write(team.root / "procedures/client-status.md", PROC)
     gitops.commit(team.root, "procedure", ["procedures"])
     add(team, tmp_path, "Topic: Public\nTopic: Secret\nMilestone: Integration testing = 2026-11-17\n")
     proc = procedures.get(team, "client-status")
-    with pytest.raises(procedures.ProcedureError, match=r"3 item\(s\) await approval: Bob Lee \(1\), Carol Lead \(2\)"):
-        procedures.run(team, proc, agents.resolve(team))
+    first = procedures.run(team, proc, agents.resolve(team))  # never held back by approvals
+    logged = okf.split_frontmatter((team.root / first["report"]).read_text())[0]["brainforge"]
+    assert logged["unapproved"] == ["milestones/integration-testing", "topics/public", "topics/secret"]
+    assert procedures.waiting_note(first) == "3 unapproved"
 
     approval.approve(team, ["topics/public"], "client")
     approval.approve(team, ["topics/secret", "milestones/integration-testing"])
     gitops.commit(team.root, "approve", ["knowledge"])
-    result = procedures.run(team, proc, agents.resolve(team))
+    result = procedures.run(team, proc, agents.resolve(team), force=True)
+    assert result["unapproved"] == [] and procedures.waiting_note(result) == ""
     report = (team.root / result["report"]).read_text()
     assert "public.md" in report and "secret" not in report and "integration-testing" not in report
     assert okf.split_frontmatter(report)[0]["audience"] == "client"

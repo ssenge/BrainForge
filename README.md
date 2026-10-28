@@ -373,7 +373,7 @@ needs_approval: [{type: Decision}, {type: Action Item}, {type: Risk}, {type: Mil
      Carol Lead       2  decisions/vendor-selection, risks/data-migration-delay
    ```
    `--check` makes it exit 1 while anything is pending, for scripts and CI.
-4. The report runs. With `require_approval: true` in the procedure, it refuses to run while items are pending and names who still has to act. With `audience: client`, it is built only from approved items meant for the client.
+4. The report runs. It never waits for approvals: its frontmatter lists what was still unapproved or expired. With `audience: client`, it is built only from approved items meant for the client.
 
 **What each decision does:**
 - **Approve** sets `approval: approved` and records you in OKF `verified`.
@@ -433,7 +433,7 @@ With `adapter: command`, any program works. It receives the prompt on stdin, run
 | `pending` | Knowledge awaiting your approval (`--team`: who still has to act; `--for NAME`, `--all`, `--check`) |
 | `approve ITEM…`, `discard ITEM…` | Decide; `ITEM@VERSION` stops if it changed since (`--audience NAME`, `--push`) |
 | `procedures list`, `procedures validate` | Procedures with schedule and last run |
-| `run PROCEDURE` | Write a report now (`--allow-pending` skips the approval gate) |
+| `run PROCEDURE` | Write a report now |
 | `schedule tick` | Run whatever is due (call it from cron or CI) |
 | `schedule install --provider cron\|github-actions` | Install the scheduler |
 | `ci install` | GitHub Actions workflows for inbox ingestion and, with `github` logins in the team, approvals (`--remind CRON`) |
