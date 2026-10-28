@@ -1,4 +1,4 @@
-# BrainForge
+<p align="center"><img src="docs/assets/logo.png" alt="BrainForge" width="320"></p>
 
 BrainForge turns documents into a structured, Git-versioned knowledge base, called a **brain**, that AI agents maintain and query. Each brain is a plain Git repository. Knowledge is stored as an [Open Knowledge Format (OKF) v0.2](https://github.com/GoogleCloudPlatform/open-knowledge-format/blob/main/SPEC.md) bundle: Markdown files with YAML frontmatter, readable without any tooling.
 
