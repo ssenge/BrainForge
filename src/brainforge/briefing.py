@@ -176,7 +176,7 @@ def text(b: dict[str, Any]) -> str:
     lines = []
     if b["messages"]:
         lines.append(f"Messages ({len(b['messages'])}):")
-        lines += [f"  {m['at'][:16].replace('T', ' ')}  from {m['from']}: {_oneline(m['text'])}  [{m['id']}]"
+        lines += [f"  {_local(m['at'])}  from {m['from']}: {_oneline(m['text'])}  [{m['id']}]"
                   for m in b["messages"]]
     for key, head in (("overdue", "Overdue"), ("due_soon", f"Due within {DUE_SOON_DAYS} days")):
         if b[key]:
@@ -188,6 +188,13 @@ def text(b: dict[str, Any]) -> str:
         lines.append(f"Awaiting {'your ' if b['for'] else ''}approval: {b['approvals']} item(s){expired} "
                      "(brainforge pending)")
     return "\n".join(lines)
+
+
+def _local(at: str) -> str:
+    try:
+        return f"{datetime.fromisoformat(at).astimezone():%Y-%m-%d %H:%M}"
+    except ValueError:
+        return at[:16]
 
 
 def _oneline(s: str, width: int = 160) -> str:
