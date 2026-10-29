@@ -92,13 +92,13 @@ def test_approvals_record_the_users_decisions(brain, tmp_path):
         mcp_server.decide(brains, "approve", [ref])  # the version Dana saw before
 
 
-@pytest.mark.parametrize("approvals", [False, True])
-def test_stdio_round_trip(brain, approvals):
+@pytest.mark.parametrize("write_", [False, True])
+def test_stdio_round_trip(brain, write_):
     """Real protocol over stdio via `brainforge mcp`: stdout must carry nothing but MCP."""
     write(brain.knowledge / "milestones" / "go-live.md", MILESTONE)
     params = StdioServerParameters(
         command=sys.executable, args=["-c", "from brainforge.cli import main; main()", "mcp", str(brain.root),
-                                      *(["--approvals"] if approvals else [])],
+                                      *(["--write"] if write_ else [])],
         env=dict(os.environ),
     )
 
@@ -110,5 +110,6 @@ def test_stdio_round_trip(brain, approvals):
             return tools, result.content[0].text  # pyright: ignore[reportAttributeAccessIssue]
 
     tools, text = anyio.run(session)
-    assert tools == {"list_brains", "search", "read"} | ({"pending", "approve", "discard"} if approvals else set())
+    assert tools == {"list_brains", "search", "read", "briefing"} | (
+        {"pending", "approve", "discard", "send_message", "dismiss_messages"} if write_ else set())
     assert "2027-01-15" in text

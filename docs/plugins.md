@@ -8,7 +8,7 @@ brainforge plugin add pm                # a bundled plugin by name, or a path to
 brainforge plugin add https://github.com/acme/brainforge-crm.git            # a plugin repository
 brainforge plugin add https://github.com/acme/plugins.git#plugins/crm       # a plugin inside one
 git add plugins && git commit -m "plugin: pm"
-brainforge plugin run pm overdue        # a plugin script
+brainforge plugin run <plugin> <script> # a plugin script
 brainforge init my-project --plugin pm  # a new brain with plugins
 ```
 
@@ -40,6 +40,8 @@ types:
     group: actions                # folder under knowledge/
     description: A task someone committed to.
     stale_after_days: 30          # optional review period, see below
+    deadline: due                 # optional: overdue once this date passes...
+    done: {state: [done, cancelled]}   # ...unless a field has one of these values
     fields:
       owner: {description: "who does it, as written", expected: true}
       due: {format: date, expected: true}
@@ -53,6 +55,8 @@ Each field may have:
 - `expected: true`: approvers see a missing value as a gap (`brainforge pending`, the GitHub reminder, Claude).
 
 `stale_after_days` gives the type a review period. Every change to such an item sets OKF `stale_after` to now plus the period. When it passes, the approved item is listed as expired in `brainforge pending`, so its approvers confirm it (approve: a new period starts) or retire it (discard: `status: deprecated`). Reports list expired items in their frontmatter.
+
+`deadline` names a field with `format: date`. An item of that type whose date has passed is overdue unless one of its `done` fields has one of the listed values. Overdue and soon-due items appear in `brainforge briefing`, in the calendar export, and once per item in a message to their owner (see the README, "Deadlines, messages and the briefing"). The ingestion agent is told to set the done value, with a citation, when a document reports the item finished.
 
 Avoid `status` as a field name: OKF uses it for the concept's lifecycle (`draft`, `stable`, `deprecated`). The pm plugin uses `state`.
 

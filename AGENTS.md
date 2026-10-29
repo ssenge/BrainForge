@@ -31,7 +31,8 @@ Run all three checks before you commit. They are all clean on `main`.
 | `src/brainforge/query.py` | Read-only question answering by an agent, with citation checks |
 | `src/brainforge/procedures.py` | Markdown procedures → reports (pandoc for DOCX/PPTX/HTML/PDF) |
 | `src/brainforge/schedule.py` | `schedule tick`, plus generators for cron entries and GitHub workflows |
-| `src/brainforge/mcp_server.py` | MCP server (`list_brains`, `search`, `read`; with `--approvals` also `pending`, `approve`, `discard`) for Claude Desktop and others |
+| `src/brainforge/briefing.py` | Deadlines from plugin types, messages (`messages/<member>/`), overdue notices, the briefing, the iCalendar export |
+| `src/brainforge/mcp_server.py` | MCP server (`list_brains`, `search`, `read`, `briefing`; with `--write` also `pending`, `approve`, `discard`, `send_message`, `dismiss_messages`) for Claude Desktop and others |
 | `src/brainforge/plugins.py` | Plugins: load, add (copy into the brain), types → instruction layer and field checks, scripts |
 | `plugins/` | Bundled plugins, e.g. `plugins/pm` (project management). Shipped in the wheel as `brainforge/bundled_plugins` |
 | `src/brainforge/integrations.py` | Agent skill install, Obsidian vault config |

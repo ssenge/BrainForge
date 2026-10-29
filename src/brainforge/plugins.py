@@ -3,6 +3,7 @@
 A plugin is a folder with `plugin.yaml` and any of:
 - `types` in plugin.yaml: concept types with their group and frontmatter fields. They are explained to the
   ingestion agent and checked deterministically after every run; missing expected fields show up as gaps;
+  a type with a `deadline` field is overdue once that date passes without one of its `done` values;
 - `instructions/<activity>.md`: an instruction layer after the framework defaults, before the brain's own;
 - `procedures/*.md`: procedures, run like the brain's own (a brain procedure with the same name wins);
 - `scripts/`: commands for `brainforge plugin run`. They never run on their own.
@@ -23,7 +24,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from brainforge import gitops, okf
 from brainforge.brain import Brain, BrainError, Layer, blob_hash
@@ -48,6 +49,14 @@ class TypeDef(BaseModel):
     description: str = ""
     fields: dict[str, FieldDef] = {}
     stale_after_days: int | None = Field(default=None, gt=0)  # review period: OKF `stale_after` on every change
+    deadline: str | None = None  # a date field: the item is overdue once it passes...
+    done: dict[str, list[str]] = {}  # ...unless one of these fields has one of these values, e.g. {state: [done]}
+
+    @model_validator(mode="after")
+    def _deadline_is_a_date_field(self) -> TypeDef:
+        if self.deadline and (self.deadline not in self.fields or self.fields[self.deadline].format != "date"):
+            raise ValueError(f"deadline '{self.deadline}' must name a field with format: date")
+        return self
 
 
 class Plugin(BaseModel):
@@ -166,6 +175,18 @@ def renew(brain: Brain, c: okf.Concept, known: dict[str, TypeDef] | None = None)
     return True
 
 
+def deadline(brain: Brain, c: okf.Concept, known: dict[str, TypeDef] | None = None) -> date | None:
+    """The date an unfinished item is due, or None: no deadline, no date yet, or done."""
+    t = (types(brain) if known is None else known).get(str(c.meta.get("type")))
+    if not (t and t.deadline) or any(str(c.meta.get(k, "")).lower() in [v.lower() for v in vs]
+                                     for k, vs in t.done.items()):
+        return None
+    try:
+        return date.fromisoformat(str(c.meta.get(t.deadline))[:10])
+    except ValueError:
+        return None  # missing or not a date: a gap or a check error
+
+
 def check(brain: Brain, path: Path, known: dict[str, TypeDef] | None = None) -> list[okf.Issue]:
     """Field values and groups of plugin types. Errors are what ingestion rolls back on."""
     rel = brain.rel(path)
@@ -216,4 +237,8 @@ def _types_text(plugin: Plugin) -> str:
             what += [f"one of {', '.join(f.values)}"] if f.values else []
             what += ["a date, YYYY-MM-DD"] if f.format == "date" else []
             lines.append(f"  - `{name}`" + (f": {'; '.join(what)}" if what else ""))
+        if t.deadline:
+            done = " or ".join(f"`{k}: {v}`" for k, vs in t.done.items() for v in vs)
+            lines.append(f"  - `{t.deadline}` is the deadline. When a document reports the item finished, set "
+                         f"{done or 'the matching value'} and cite that document; \"in progress\" is not finished.")
     return "\n".join(lines) + "\n"

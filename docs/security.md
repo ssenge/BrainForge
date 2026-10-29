@@ -28,9 +28,16 @@ BrainForge processes confidential documents with LLM agents. This document descr
 
 - `approve` and `discard` pull first and stop if the pull changed a named item. A pinned version (`item@3f2a1c9`) must still be the item's latest commit.
 - Pushes never merge a decision into content the person didn't see. When both sides changed the same file, BrainForge undoes its own commits instead of merging.
-- **Claude Desktop** (`brainforge mcp --approvals`, off by default) decides as the clone's git identity and accepts only `id@version` refs, which the agent gets from `pending`. The server's instructions tell the agent to ask the user about every item. Whether it does is up to the agent, as with any tool, so turn the option on only for a client you trust to ask.
+- **Claude Desktop** (`brainforge mcp --write`, off by default) decides as the clone's git identity and accepts only `id@version` refs, which the agent gets from `pending`. The server's instructions tell the agent to ask the user about every item. Whether it does is up to the agent, as with any tool, so turn the option on only for a client you trust to ask.
 - **Issue comments** decide only when the commenter has write access (`author_association` OWNER, MEMBER or COLLABORATOR) *and* is listed with that `github` login in `brain.yaml`. The comment reaches BrainForge as an environment variable, never as part of the script, and is parsed for `approve`/`discard` lines only.
 - **Residual risk:** anyone who can push to the repository can also edit `brain.yaml` or the knowledge directly; approvals record who decided, they don't replace repository permissions. Each team member may decide on any item, not only their own: the routing tells people what to look at, it isn't access control.
+
+## Messages and the briefing
+
+- Messages are files in the brain repository (`messages/<member>/`). Everyone who can read the repository can read every message; the folder per person organizes them, it doesn't protect them. Treat them like a team channel.
+- `message send` refuses text that looks like a credential, using the same patterns as the ingestion scan.
+- Messages never reach an ingestion or report agent: agents see `knowledge/` only, and audience views copy nothing else.
+- A brain's `.claude/settings.json` runs `brainforge briefing --hook` when Claude Code starts a session in the brain folder. Claude Code asks you to trust a folder before it runs its hooks. Agent runs by BrainForge don't load it: they run with `--bare` or `--setting-sources ""`.
 
 ## Plugins
 

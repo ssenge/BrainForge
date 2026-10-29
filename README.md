@@ -84,7 +84,7 @@ brainforge knowledge query "When does integration testing start?"
 
 # Write a report: the plugin's status report, or the generic weekly summary in procedures/weekly-report.md
 brainforge run status-report
-brainforge plugin run pm overdue      # actions and milestones past their date
+brainforge briefing                  # what needs you: messages, overdue and soon-due items, approvals
 ```
 
 - The document text goes only to your AI provider, through your agent CLI. Everything else stays on your machine.
@@ -251,18 +251,21 @@ The server also passes BrainForge's query rules to Claude:
 
 For a status question, Claude reads the latest weekly report plus the milestone, risk and decision concepts, and answers with links to them.
 
-**Approving from Claude Desktop.** Add `"--approvals"` to the `args`. Then ask *"show my pending brain items"*, and Claude:
+**What needs you.** The server has a `briefing` tool and tells Claude to call it at the start of a conversation, so Claude opens with new messages, overdue items and items due soon (see [Deadlines, messages and the briefing](#deadlines-messages-and-the-briefing)).
+
+**Approving from Claude Desktop.** Add `"--write"` to the `args`. Then ask *"show my pending brain items"*, and Claude:
 1. lists your items as a short table, with links that open them in Obsidian and a summary of what changed;
 2. asks Approve, Approve for client, Discard or Not now, up to four items at a time;
 3. records only what you answered.
 
-| Tool (with `--approvals`) | What it does |
+| Tool (with `--write`) | What it does |
 |---|---|
 | `pending` | Your pending items (`scope: all` for everyone's). Each has a `ref` (`id@version`), a link, and for a changed item the diff against the approved version. |
 | `approve`, `discard` | Records a decision as your git identity (`git config user.email` in the clone), commits, and pushes when the brain has a remote. Only `ref` values from `pending` are accepted, so a decision on an item that changed since Claude showed it stops. |
+| `send_message`, `dismiss_messages` | Leaves a message for a teammate when you ask; removes your own messages once you're done with them. |
 
 Options:
-- `--approvals` adds the three approval tools; without it, the server can't change anything.
+- `--write` adds the approval and message tools; without it, the server can't change anything.
 - `--no-pull` disables the automatic sync.
 - Without arguments, the server serves the brain in the current directory.
 - Pulling a private repository uses your normal git credentials (keychain or SSH agent).
@@ -395,6 +398,36 @@ Decisions are small commits, so people deciding in parallel don't conflict, and 
 - People reply with one command per line: `approve <item>`, `approve <item> --audience client` or `discard <item>`. The workflow applies them as that team member, so the commit author and `verified` name the person. It then replies with the result and what still waits for them.
 - Only comments from people with write access count, and only from logins listed in the team. Nobody else can decide. The comment is passed as data and never runs as a script. No agent is involved, so no secret is needed.
 
+## Deadlines, messages and the briefing
+
+**Deadlines.** A plugin type can name a date field as its deadline, and the values that mean finished. The pm plugin does this for action items (`due`; finished when `done` or `cancelled`), milestones (`date`; `achieved` or `cancelled`) and dependencies (`due`; `met`). An unfinished item past its date is overdue. Whether it is finished comes from the documents: when the minutes or a note say "the test plan went out on Monday", ingestion sets `state: done` and cites them, and the owner confirms that by approving it.
+
+**The briefing** is one list of what needs you:
+```bash
+brainforge briefing             # your messages, overdue items, items due within 3 days, approvals
+brainforge briefing --for Bob   # someone else's
+```
+You are the team member that matches your git identity; if none does, you see everyone's.
+
+**Messages** are for your teammates:
+```bash
+brainforge message send Bob "Please check the vendor risk." --about risks/vendor-delay
+brainforge message dismiss <id>   # or --all; git history keeps them
+```
+A message is a file in the brain repository (`messages/<member>/`). **Everyone with access to the repository can read it**: treat messages like a team channel, not like private mail. BrainForge refuses a message that looks like it contains a password or key.
+
+**Overdue items notify their owners once.** The scheduled run of the `brainforge-approvals` workflow (see [Approving from GitHub](#approval-and-audiences)) leaves a message with the owner of each newly overdue item and @mentions them in the reminder issue, once per item and date. If the date moves and passes again, they hear about it again. Without GitHub, the briefing still shows what is overdue.
+
+**Your agent tells you.**
+- **Claude Code:** `brainforge init` and `brainforge skills install claude` add a session-start hook to the brain's `.claude/settings.json`. Claude then opens each session in the brain with the briefing when there is something to tell, and says nothing otherwise.
+- **Claude Desktop:** the `briefing` tool of `brainforge mcp` (see above). With `--write`, Claude can also send and dismiss messages for you.
+
+**Calendar:**
+```bash
+brainforge calendar -o deadlines.ics   # your open deadlines; --all for everyone's
+```
+Import the file into any calendar; importing it again updates the events. An agent with a calendar tool, such as Google Calendar in Claude, can also add a deadline when you ask. BrainForge itself never touches calendar credentials.
+
 ## Agents and authentication
 
 BrainForge never touches credentials; it runs the agent CLI, which logs itself in.
@@ -428,6 +461,9 @@ With `adapter: command`, any program works. It receives the prompt on stdin, run
 | `ingest FILE…` | Ingest documents (`--instruction`, `--dry-run`, `--force`, `--no-commit`, `--push`, `--allow-secrets`) |
 | `inbox process` | Ingest everything in `inbox/` |
 | `note TEXT` | Ingest a typed note (a correction, a fact from a call) as a source by you; `-` reads stdin |
+| `briefing` | What needs you: messages, overdue and soon-due items, approvals (`--for NAME`; `--hook` for an agent's session start) |
+| `message send TO TEXT`, `message dismiss ID…` | Messages for team members, stored in the brain repository and readable by everyone with access (`--about ITEM`, `--all`, `--push`) |
+| `calendar` | Open deadlines as an iCalendar file (`--all`, `--for NAME`, `-o FILE`) |
 | `knowledge search [TEXT]` | Deterministic search (`--type`, `--tag`, `--status`, `--approval`, `--links-to`, `--linked-from`) |
 | `knowledge query QUESTION` | Agent answer with citations, read-only (`--audience LEVEL`) |
 | `knowledge validate`, `knowledge index` | OKF checks; regenerate `index.md` files |
@@ -438,11 +474,11 @@ With `adapter: command`, any program works. It receives the prompt on stdin, run
 | `schedule tick` | Run whatever is due (call it from cron or CI) |
 | `schedule install --provider cron\|github-actions` | Install the scheduler |
 | `ci install` | GitHub Actions workflows for inbox ingestion and, with `github` logins in the team, approvals (`--remind CRON`) |
-| `ci remind`, `ci decide --author LOGIN` | Used by the approvals workflow: the reminder text; apply a comment's decisions |
+| `ci remind [--notify]`, `ci decide --author LOGIN` | Used by the approvals workflow: the reminder text, with `--notify` first the messages about newly overdue items; apply a comment's decisions |
 | `plugin add NAME\|PATH\|GIT-URL`, `plugin list`, `plugin run PLUGIN SCRIPT [ARGS…]` | Add a plugin to the brain (`init --plugin NAME` does it at creation), list plugins, run a plugin script |
 | `skills install claude\|codex [--user]` | Agent skill that wraps the CLI |
 | `workspace open` | Open the brain as an Obsidian vault |
-| `mcp [BRAIN_DIR…]` | Serve one or more brains over MCP, for Claude Desktop and other MCP clients; read-only unless `--approvals` |
+| `mcp [BRAIN_DIR…]` | Serve one or more brains over MCP, for Claude Desktop and other MCP clients; read-only unless `--write` |
 
 Global options:
 - `--brain PATH`: by default the brain is found from the current directory upwards, the way git finds its repo.

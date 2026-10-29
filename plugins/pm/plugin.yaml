@@ -1,10 +1,12 @@
 name: pm
-version: 1
+version: 2
 description: Project management - milestones, decisions, actions, and a RAID log (risks, assumptions, issues, dependencies).
 types:
   - type: Milestone
     group: milestones
     description: A planned point in the project, such as a go-live or the start of testing.
+    deadline: date
+    done: {state: [achieved, cancelled]}
     fields:
       owner: {description: "who is responsible, as written"}
       date: {description: "the current planned or actual date", format: date, expected: true}
@@ -20,6 +22,8 @@ types:
   - type: Action Item
     group: actions
     description: A task someone committed to.
+    deadline: due
+    done: {state: [done, cancelled]}
     fields:
       owner: {description: "who does it, as written", expected: true}
       due: {format: date, expected: true}
@@ -52,6 +56,8 @@ types:
   - type: Dependency
     group: dependencies
     description: Something the project needs from outside it, such as a delivery from another team or a vendor.
+    deadline: due
+    done: {state: [met]}
     fields:
       owner: {}
       due: {format: date}

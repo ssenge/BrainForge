@@ -2,7 +2,7 @@
 
 The calling agent does the reasoning. BrainForge only serves the knowledge, deterministically:
 no nested agent run, no writes except `git pull --ff-only` to pick up what CI ingested.
-With `approvals=True` (opt-in), it also records the user's own approve/discard decisions.
+With `write=True` (opt-in), it also records the user's own approve/discard decisions and their messages.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from typing import Any
 from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 
-from brainforge import __version__, approval, gitops, okf, procedures
+from brainforge import __version__, approval, briefing, gitops, okf, procedures
 from brainforge.brain import Brain, data_text, instruction_layers
 
 PULL_EVERY = 300  # seconds between `git pull` per brain
@@ -30,10 +30,15 @@ For status questions, start with the latest report from `list_brains`.
 Search results carry a `url` that opens the concept in Obsidian: cite concepts as markdown links to it, e.g. [Go-live](url).
 `approval: pending` means no person has approved the concept yet: say so when an answer rests on it.
 
+At the start of a conversation, call `briefing` once. If it lists messages, overdue items or items due soon, tell
+the user in a few lines, with links, before you answer their first request. Messages are files in the brain
+repository: everyone with access to it can read them. To put a deadline in the user's calendar, use your own
+calendar tool if you have one (an all-day event with the title, date and link); else suggest `brainforge calendar`.
+
 """
 
-APPROVALS_GUIDE = """\
-Approvals are enabled: you record the user's own decisions on knowledge awaiting approval.
+WRITE_GUIDE = """\
+Writing is enabled: you record the user's own decisions on knowledge awaiting approval, and their messages.
 1. Call `pending`. Show the items as one compact table, nothing more: | # | Item | What changed | Source |,
    with Item as [title](url). For a changed item, summarize its `changes` diff in a few words.
 2. Ask about up to four items at a time, one short question each, and wait for the user's explicit answer:
@@ -43,6 +48,8 @@ Approvals are enabled: you record the user's own decisions on knowledge awaiting
    show the new version before asking again.
 4. An `expired` item was approved before but is past its review date: Approve confirms it is still true,
    Discard retires it.
+5. `send_message` only when the user asks you to, with their words; say that everyone with access to the brain
+   can read it. `dismiss_messages` once the user is done with a message from the briefing.
 
 """
 
@@ -158,9 +165,32 @@ def decide(brains: Brains, verb: str, items: list[str], brain: str | None = None
                            push=b.manifest.git.commit and gitops.has_upstream(b.root))
 
 
-def build(roots: list[Brain], pull: bool = True, approvals: bool = False) -> MCPServer:
+def briefings(brains: Brains, brain: str | None = None) -> list[dict[str, Any]]:
+    """Per brain: what needs the user (the clone's git identity), or the whole team's if they aren't on it."""
+    return [briefing.briefing(b, approval.me(b)) for b in ([brains.get(brain)] if brain else brains.all())]
+
+
+def send_message(brains: Brains, to: str, text: str, about: str | None = None,
+                 brain: str | None = None) -> dict[str, Any]:
+    b = brains.get(brain)
+    m = briefing.member(b, to)
+    [rel] = gitops.change(b.root, f"message: to {m.name}", lambda: [briefing.send(b, m, text, briefing.author(b), about)],
+                          b.manifest.git.commit and gitops.has_upstream(b.root))
+    return {"to": m.name, "path": rel, "note": "Everyone with access to the brain repository can read it."}
+
+
+def dismiss_messages(brains: Brains, ids: list[str], brain: str | None = None) -> dict[str, Any]:
+    b = brains.get(brain)
+    if (who := approval.me(b)) is None:
+        raise ValueError(f"your git identity ({gitops.user(b.root) or 'not set'}) is not on this brain's team")
+    rels = gitops.change(b.root, "message: dismissed {n}", lambda: briefing.dismiss(b, who, ids),
+                         b.manifest.git.commit and gitops.has_upstream(b.root))
+    return {"dismissed": rels}
+
+
+def build(roots: list[Brain], pull: bool = True, write: bool = False) -> MCPServer:
     brains = Brains(roots, pull)
-    guide = GUIDE + (APPROVALS_GUIDE if approvals else "")
+    guide = GUIDE + (WRITE_GUIDE if write else "")
     server = MCPServer("brainforge", version=__version__, instructions=guide + data_text("query.md"))
 
     @server.tool(name="list_brains", annotations=READ_ONLY)
@@ -181,7 +211,13 @@ def build(roots: list[Brain], pull: bool = True, approvals: bool = False) -> MCP
         `milestones/go-live`, `knowledge/index.md` or a report path from `list_brains`."""
         return read(brains, path, brain)
 
-    if not approvals:
+    @server.tool(name="briefing", annotations=READ_ONLY)
+    def briefing_tool(brain: str | None = None) -> list[dict[str, Any]]:
+        """What needs the user, per brain: messages, overdue items, items due within a few days, and how many
+        items await their approval. Call it once at the start of a conversation."""
+        return briefings(brains, brain)
+
+    if not write:
         return server
 
     @server.tool(name="pending", annotations=READ_ONLY)
@@ -202,8 +238,20 @@ def build(roots: list[Brain], pull: bool = True, approvals: bool = False) -> MCP
         hidden. Call only after the user explicitly said so. `items`: `ref` values from `pending`."""
         return decide(brains, "discard", items, brain)
 
+    @server.tool(name="send_message", annotations=DECIDE)
+    def send_message_tool(to: str, text: str, about: str | None = None, brain: str | None = None) -> dict[str, Any]:
+        """Leave a message for a team member (name, alias, email or GitHub login), shown in their briefing.
+        Only when the user asks. `about`: the item it concerns, e.g. risks/vendor-delay. Readable by everyone
+        with access to the brain."""
+        return send_message(brains, to, text, about, brain)
+
+    @server.tool(name="dismiss_messages", annotations=UNDO)
+    def dismiss_messages_tool(ids: list[str], brain: str | None = None) -> dict[str, Any]:
+        """Remove the user's own messages (ids from `briefing`) once they are done with them."""
+        return dismiss_messages(brains, ids, brain)
+
     return server
 
 
-def serve(roots: list[Brain], pull: bool = True, approvals: bool = False) -> None:
-    build(roots, pull, approvals).run("stdio")
+def serve(roots: list[Brain], pull: bool = True, write: bool = False) -> None:
+    build(roots, pull, write).run("stdio")

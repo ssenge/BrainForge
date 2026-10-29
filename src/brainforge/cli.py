@@ -18,6 +18,7 @@ from typer.exceptions import TyperException
 from brainforge import (
     agents,
     approval,
+    briefing,
     gitops,
     ingest,
     integrations,
@@ -42,9 +43,11 @@ ci_app = typer.Typer(no_args_is_help=True, help="GitHub Actions integration.")
 skills_app = typer.Typer(no_args_is_help=True, help="Install BrainForge skills for coding agents.")
 plugin_app = typer.Typer(no_args_is_help=True, help="Plugins: domain types, instructions, procedures and scripts.")
 workspace_app = typer.Typer(no_args_is_help=True, help="Open the brain in Obsidian.")
+message_app = typer.Typer(no_args_is_help=True, help="Messages for team members. They are files in the brain "
+                          "repository: everyone with access to it can read them.")
 for sub, name in [(brain_app, "brain"), (knowledge_app, "knowledge"), (inbox_app, "inbox"),
-                  (procedures_app, "procedures"), (schedule_app, "schedule"),
-                  (ci_app, "ci"), (skills_app, "skills"), (workspace_app, "workspace"), (plugin_app, "plugin")]:
+                  (procedures_app, "procedures"), (schedule_app, "schedule"), (ci_app, "ci"), (skills_app, "skills"),
+                  (workspace_app, "workspace"), (plugin_app, "plugin"), (message_app, "message")]:
     app.add_typer(sub, name=name)
 
 STATE: dict[str, Any] = {"brain": None, "json": False}
@@ -215,8 +218,7 @@ def note_cmd(
     text = (sys.stdin.read() if text == "-" else text).strip()
     if not text:
         raise BrainError("the note is empty")
-    who = approval.me(b)  # the team name if git's identity matches a member, else git's name
-    author = who.name if who else gitops.git(b.root, "var", "GIT_AUTHOR_IDENT", check=False).rsplit(" <", 1)[0].strip() or "unknown"
+    author = briefing.author(b)
     now = datetime.now().astimezone()
     with tempfile.TemporaryDirectory() as tmp:  # ingestion archives the note like any document
         path = Path(tmp) / f"note-{now:%Y-%m-%d-%H%M%S}.md"
@@ -370,6 +372,79 @@ def _decision(b: Brain, verb: str, items: list[str], audience: str | None, no_co
     emit(result, "\n".join(result["lines"]) + (f"\n[{sha[:8]}]" if sha else ""))
 
 
+@app.command("briefing")
+def briefing_cmd(
+    for_: Annotated[str | None, typer.Option("--for", help="Another team member (name, alias, email or login).")] = None,
+    hook: Annotated[bool, typer.Option("--hook", help="For an agent's session start: a note to the agent, "
+                                       "nothing when there is nothing to tell.")] = False,
+) -> None:
+    """What needs you: messages, overdue and soon-due items, and approvals. Everyone's if you aren't on the team."""
+    b = current()
+    _sync(b)
+    who = briefing.find(b, for_)
+    data = briefing.briefing(b, who)
+    body = briefing.text(data)
+    if hook:
+        if body:
+            typer.echo(f"BrainForge briefing for {who.name if who else 'the whole team'} (brain {b.id}). Tell the "
+                       "user about it in a few lines at the start of your first answer, then help with their "
+                       f"request.\n{body}")
+        return
+    emit(data, body or "Nothing needs you right now.")
+
+
+@message_app.command("send")
+def message_send(
+    to: Annotated[str, typer.Argument(help="Team member: name, alias, email or GitHub login.")],
+    text: Annotated[str, typer.Argument(help="The message; '-' reads stdin.")],
+    about: Annotated[str | None, typer.Option("--about", help="The item it is about, e.g. risks/vendor-delay.")] = None,
+    push: PushOpt = False,
+) -> None:
+    """Leave a message that the member's next briefing shows. Everyone with access to the brain can read it."""
+    b = current()
+    m = briefing.member(b, to)
+    body = sys.stdin.read() if text == "-" else text
+    [rel] = gitops.change(b.root, f"message: to {m.name}",
+                          lambda: [briefing.send(b, m, body, briefing.author(b), about)], wants_push(b, push))
+    emit({"to": m.name, "path": rel},
+         f"Left {rel} for {m.name}.\nnote: everyone with access to this brain repository can read it.")
+
+
+@message_app.command("dismiss")
+def message_dismiss(
+    ids: Annotated[list[str] | None, typer.Argument(help="Message ids, as the briefing shows them.")] = None,
+    all_: Annotated[bool, typer.Option("--all", help="Dismiss all your messages.")] = False,
+    push: PushOpt = False,
+) -> None:
+    """Remove your messages from your briefing. Git history keeps them."""
+    b = current()
+    if not ids and not all_:
+        raise BrainError("name the messages to dismiss, or use --all")
+    who = approval.me(b)
+    if who is None:
+        raise BrainError(f"your git identity ({gitops.user(b.root) or 'not set'}) is not on this brain's team")
+    rels = gitops.change(b.root, "message: dismissed {n}", lambda: briefing.dismiss(b, who, None if all_ else ids),
+                         wants_push(b, push))
+    emit({"dismissed": rels}, f"Dismissed {len(rels)} message(s).")
+
+
+@app.command("calendar")
+def calendar_cmd(
+    for_: Annotated[str | None, typer.Option("--for", help="Another team member's deadlines.")] = None,
+    everyone: Annotated[bool, typer.Option("--all", help="Everyone's deadlines.")] = False,
+    output: Annotated[Path | None, typer.Option("--output", "-o", help="Write to this .ics file instead of stdout.")] = None,
+) -> None:
+    """Open deadlines as an iCalendar file to import into any calendar: yours, or everyone's if you aren't on the team."""
+    b = current()
+    ics = briefing.calendar(b, None if everyone else briefing.find(b, for_))
+    if output is None:
+        sys.stdout.write(ics)
+        return
+    output.write_bytes(ics.encode("utf-8"))
+    n = ics.count("BEGIN:VEVENT")
+    emit({"calendar": str(output), "events": n}, f"Wrote {output} with {n} deadline(s). Import it again to update them.")
+
+
 @app.command("approve")
 def approve_cmd(
     items: ItemsArg,
@@ -500,13 +575,25 @@ def _repo_url() -> str | None:
 
 
 @ci_app.command("remind")
-def ci_remind(since: Annotated[str | None, typer.Option(
-        help="Only items changed after this commit (the reminder after an ingestion).")] = None) -> None:
-    """Print the approval reminder for a GitHub issue (Markdown with @mentions); nothing if all is approved."""
+def ci_remind(
+    since: Annotated[str | None, typer.Option(
+        help="Only items changed after this commit (the reminder after an ingestion).")] = None,
+    notify: Annotated[bool, typer.Option("--notify", help="First leave a message with the approvers of each newly "
+                                         "overdue item, once per item, commit and push it, and mention them.")] = False,
+) -> None:
+    """Print the reminder for a GitHub issue (Markdown with @mentions); nothing if nothing needs anyone."""
     b = current()
     _sync(b)
-    text = approval.reminder(b, _repo_url(), since=since)
-    if text:
+    parts = []
+    if notify:
+        start, sent = gitops.head(b.root), briefing.notify(b)
+        if sent:
+            gitops.commit(b.root, f"notify: {len(sent)} overdue item(s)", [rel for _, _, rel in sent])
+            if gitops.has_upstream(b.root):
+                gitops.publish(b.root, start)
+        parts.append(briefing.github(b, sent, _repo_url()))
+    parts.append(approval.reminder(b, _repo_url(), since=since))
+    if text := "\n\n".join(p for p in parts if p):
         typer.echo(text)
 
 
@@ -584,10 +671,12 @@ def skills_install(
     agent: Annotated[str, typer.Argument(help="claude or codex.")],
     user: Annotated[bool, typer.Option("--user", help="Install for your user instead of this brain repo.")] = False,
 ) -> None:
-    """Install the BrainForge skill for Claude Code or Codex."""
+    """Install the BrainForge skill for Claude Code or Codex; in a brain, Claude Code also gets the briefing hook."""
     base = Path.home() if user else current().root
     path = integrations.install_skill(agent, base)
-    emit({"skill": str(path)}, f"Installed {path}")
+    hook = integrations.install_hook(base) if agent == "claude" and not user else None
+    emit({"skill": str(path), "hook": str(hook) if hook else None},
+         f"Installed {path}" + (f"\nSessions in this brain start with the briefing ({hook})" if hook else ""))
 
 
 @workspace_app.command("open")
@@ -606,17 +695,17 @@ def workspace_open(
 def mcp(
     brains: Annotated[list[Path] | None, typer.Argument(help="Brain directories (default: the current brain).")] = None,
     pull: Annotated[bool, typer.Option("--pull/--no-pull", help="git pull --ff-only every 5 minutes.")] = True,
-    approvals: Annotated[bool, typer.Option("--approvals", help="Also let the client record your decisions "
-                                            "(pending, approve, discard): commits by your git identity, "
-                                            "pushed when the brain has a remote.")] = False,
+    write: Annotated[bool, typer.Option("--write", help="Also let the client act as you: approve and discard, "
+                                        "send and dismiss messages. Commits by your git identity, pushed when the "
+                                        "brain has a remote.")] = False,
 ) -> None:
-    """Serve brains over MCP (stdio) for Claude Desktop and other MCP clients; read-only unless --approvals."""
+    """Serve brains over MCP (stdio) for Claude Desktop and other MCP clients; read-only unless --write."""
     from brainforge import mcp_server  # the MCP SDK is only needed here
 
     roots = [brain_mod.find(p) for p in brains] if brains else [current()]
     if len({b.id for b in roots}) < len(roots):
         raise BrainError("two brains share the same id")
-    mcp_server.serve(roots, pull, approvals)
+    mcp_server.serve(roots, pull, write)
 
 
 # --- entry point -------------------------------------------------------------------------------

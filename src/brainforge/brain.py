@@ -168,10 +168,12 @@ def init(target: Path, name: str | None = None, brain_id: str | None = None, ada
         "procedures/weekly-report.md": data_text("init/weekly-report.md"),
         ".gitignore": data_text("init/gitignore"),
         ".gitattributes": data_text("init/gitattributes"),
+        ".claude/settings.json": data_text("init/claude-settings.json"),  # Claude Code: the briefing at session start
         "knowledge/log.md": "# Brain log\n",
     }
     for rel, text in files.items():
         if not (target / rel).exists():
+            (target / rel).parent.mkdir(parents=True, exist_ok=True)
             (target / rel).write_text(text, encoding="utf-8")
     okf.append_log(target / "knowledge", f"**Initialization**: created brain `{manifest.id}`.")
     okf.write_indexes(target / "knowledge")

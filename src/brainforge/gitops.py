@@ -5,7 +5,7 @@ from __future__ import annotations
 import contextlib
 import fcntl
 import subprocess
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 
@@ -78,6 +78,19 @@ def commit(root: Path, message: str, paths: list[str], author: str | None = None
     git(root, "add", "-A", "--", *existing)
     git(root, "commit", "-q", "-m", message, *([f"--author={author}"] if author else []), "--", *existing)
     return head(root) or ""
+
+
+def change(root: Path, message: str, make: Callable[[], list[str]], push: bool) -> list[str]:
+    """Pull, make the change, commit exactly the paths it returns (`{n}` in the message: how many), and push."""
+    if push:
+        pull(root)
+    start = head(root)
+    paths = make()
+    if paths:
+        commit(root, message.format(n=len(paths)), paths)
+        if push:
+            publish(root, start)
+    return paths
 
 
 def has_upstream(root: Path) -> bool:

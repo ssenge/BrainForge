@@ -21,7 +21,6 @@ def test_add_list_and_init(brain, tmp_path, run_cli):
     assert json.loads(run_cli("--brain", brain.root, "--json", "plugin", "list")[1])[0]["status"] == "available"
     code, out, _ = run_cli("--brain", brain.root, "plugin", "add", "pm")
     assert code == 0 and "types: Milestone, Decision, Action Item" in out and "procedures: status-report" in out
-    assert (brain.root / "plugins/pm/scripts/overdue.py").is_file()
     assert json.loads(run_cli("--brain", brain.root, "--json", "plugin", "list")[1])[0]["status"] == "installed"
 
     code, out, _ = run_cli("init", tmp_path / "proj", "--plugin", "pm")
@@ -80,15 +79,13 @@ def test_field_values_are_checked_and_gaps_shown(pm, tmp_path, monkeypatch, run_
     assert "missing date" in run_cli("--brain", pm.root, "pending")[1]
 
 
-def test_overdue_script(pm, capfd):
-    write(pm.knowledge / "actions/send-contract.md",
-          "---\ntype: Action Item\ntitle: Send contract\nowner: Bob\ndue: 2026-10-20\nstate: open\n---\nx\n")
-    write(pm.knowledge / "actions/old.md", "---\ntype: Action Item\ntitle: Old\ndue: 2026-01-01\nstate: done\n---\nx\n")
-    write(pm.knowledge / "milestones/go-live.md", "---\ntype: Milestone\ntitle: Go-live\ndate: 2027-02-01\n---\nx\n")
-    assert cli.run(["--brain", str(pm.root), "plugin", "run", "pm", "overdue", "2026-10-28"]) == 1
-    out = capfd.readouterr().out
-    assert out.startswith("1 overdue item(s) as of 2026-10-28:") and "actions/send-contract  Action Item 2026-10-20, owner: Bob" in out
-    assert cli.run(["--brain", str(pm.root), "plugin", "run", "pm", "nope"]) == 2
+def test_plugin_scripts_run_in_the_brain(brain, tmp_path, capfd):
+    write(tmp_path / "hello/plugin.yaml", "name: hello\n")
+    write(tmp_path / "hello/scripts/greet.py", "import os, sys\nprint(os.getcwd(), *sys.argv[1:])\nsys.exit(3)\n")
+    plugins.add(brain, str(tmp_path / "hello"))
+    assert cli.run(["--brain", str(brain.root), "plugin", "run", "hello", "greet", "a", "b"]) == 3
+    assert capfd.readouterr().out == f"{brain.root} a b\n"
+    assert cli.run(["--brain", str(brain.root), "plugin", "run", "hello", "nope"]) == 2
 
 
 def test_validate_reports_wrong_values_and_groups(pm, run_cli):

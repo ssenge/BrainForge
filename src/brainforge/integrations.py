@@ -25,6 +25,19 @@ def install_skill(agent: str, base: Path) -> Path:
     return path
 
 
+def install_hook(base: Path) -> Path:
+    """Claude Code sessions in this folder start with `brainforge briefing --hook` (merged into .claude/settings.json)."""
+    path = base / ".claude" / "settings.json"
+    hook = json.loads(data_text("init/claude-settings.json"))["hooks"]["SessionStart"][0]
+    data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    starts = data.setdefault("hooks", {}).setdefault("SessionStart", [])
+    if hook not in starts:
+        starts.append(hook)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
 # Okabe-Ito palette: distinguishable for colour-blind readers.
 PALETTE = [0xE69F00, 0x56B4E9, 0x009E73, 0xF0E442, 0x0072B2, 0xD55E00, 0xCC79A7, 0x999999]
 
