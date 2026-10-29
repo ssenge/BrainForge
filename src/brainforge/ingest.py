@@ -329,7 +329,8 @@ def ingest(
 
 def note(author: str, text: str, at: datetime, what: str = "Note") -> tuple[str, str]:
     """File name and content of a typed note, which is ingested like any document."""
-    return f"{what.lower()}-{at:%Y-%m-%d-%H%M%S}.md", f"# {what} by {author}, {at:%Y-%m-%d %H:%M}\n\n{text.strip()}\n"
+    return (f"{what.lower()}-{at:%Y-%m-%d-%H%M%S}.md",
+            f"# {what} by {author}, {at:%Y-%m-%d %H:%M %Z}\n\n{text.strip()}\n")  # CI runs in UTC: say so
 
 
 def _drop_duplicate(brain: Brain, path: Path, msg: str, commit: bool) -> None:
