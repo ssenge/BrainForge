@@ -27,6 +27,7 @@ from brainforge import (
     plugins,
     procedures,
     query,
+    rounds,
     schedule,
 )
 from brainforge import brain as brain_mod
@@ -212,20 +213,24 @@ def note_cmd(
     agent: AgentOpt = None,
     model: ModelOpt = None,
 ) -> None:
-    """Ingest a typed note as a source document by you, e.g. "The go-live moved to 2026-12-01." """
+    """Ingest a typed note as a source document by you, e.g. "The go-live moved to 2026-12-01". In an open
+    round you take part in, it is your update."""
     b = current()
-    cfg = agents.resolve(b, agent, model)
-    text = (sys.stdin.read() if text == "-" else text).strip()
-    if not text:
-        raise BrainError("the note is empty")
-    author = briefing.author(b)
-    now = datetime.now().astimezone()
-    with tempfile.TemporaryDirectory() as tmp:  # ingestion archives the note like any document
-        path = Path(tmp) / f"note-{now:%Y-%m-%d-%H%M%S}.md"
-        path.write_text(f"# Note by {author}, {now:%Y-%m-%d %H:%M}\n\n{text}\n", encoding="utf-8")
-        outcomes = _ingest_and_push(b, wants_push(b, push), lambda: [
-            ingest.ingest(b, path, cfg, commit=wants_commit(b, no_commit))])
+    outcomes = _ingest_note(b, agents.resolve(b, agent, model), sys.stdin.read() if text == "-" else text,
+                            approval.author(b), wants_push(b, push), wants_commit(b, no_commit))
     raise typer.Exit(_report_outcomes(outcomes))
+
+
+def _ingest_note(b: Brain, cfg: brain_mod.AgentConfig, text: str, sender: str, push: bool, commit: bool = True,
+                 round_id: str | None = None, what: str = "Note") -> list[ingest.Outcome]:
+    if not text.strip():
+        raise BrainError(f"the {what.lower()} is empty")
+    name, content = ingest.note(sender, text, datetime.now().astimezone(), what)
+    with tempfile.TemporaryDirectory() as tmp:  # ingestion archives the note like any document
+        path = Path(tmp) / name
+        path.write_text(content, encoding="utf-8")
+        return _ingest_and_push(b, push, lambda: [
+            ingest.ingest(b, path, cfg, commit=commit, sender=sender, round_id=round_id)])
 
 
 @inbox_app.command("process")
@@ -378,7 +383,8 @@ def briefing_cmd(
     hook: Annotated[bool, typer.Option("--hook", help="For an agent's session start: a note to the agent, "
                                        "nothing when there is nothing to tell.")] = False,
 ) -> None:
-    """What needs you: messages, overdue and soon-due items, and approvals. Everyone's if you aren't on the team."""
+    """What needs you: messages, open rounds, overdue and soon-due items, and approvals. Everyone's if you aren't on
+    the team."""
     b = current()
     _sync(b)
     who = briefing.find(b, for_)
@@ -402,10 +408,10 @@ def message_send(
 ) -> None:
     """Leave a message that the member's next briefing shows. Everyone with access to the brain can read it."""
     b = current()
-    m = briefing.member(b, to)
+    m = approval.member(b, to)
     body = sys.stdin.read() if text == "-" else text
     [rel] = gitops.change(b.root, f"message: to {m.name}",
-                          lambda: [briefing.send(b, m, body, briefing.author(b), about)], wants_push(b, push))
+                          lambda: [briefing.send(b, m, body, approval.author(b), about)], wants_push(b, push))
     emit({"to": m.name, "path": rel},
          f"Left {rel} for {m.name}.\nnote: everyone with access to this brain repository can read it.")
 
@@ -512,6 +518,22 @@ def run_cmd(
     emit(result, text + "".join(f"\nwarning: broken citation {c}" for c in result["broken_citations"]))
 
 
+@app.command("rounds")
+def rounds_cmd() -> None:
+    """Rounds (asynchronous status meetings): the latest of each, who has sent an update and who hasn't."""
+    b = current()
+    _sync(b)
+    data = rounds.status(b)
+    lines = []
+    for r in data:
+        state = f"open until {r['closes'][:16]}" if r["open"] else f"closed {r['closes'][:16]}"
+        lines.append(f"{r['id']}  {state}  {r['report'] or r['page']}")
+        lines += [f"  {u['from']}  {u['sent'][:16]}  {u['title']} ({u['source']})" for u in r["updates"]]
+        if r["missing"]:
+            lines.append(f"  {'no update' if r['report'] else 'not yet'}: {', '.join(r['missing'])}")
+    emit(data, "\n".join(lines) or "No rounds: add `round:` to a scheduled procedure (docs/procedures.md).")
+
+
 # --- scheduling & CI ---------------------------------------------------------------------------
 
 @schedule_app.command("tick")
@@ -529,7 +551,8 @@ def schedule_tick(
     results = schedule.tick(b, only=procedure, commit=wants_commit(b, no_commit))
     if push and any(r.get("commit") for r in results):
         gitops.publish(b.root, start)
-    emit(results, "\n".join(f"{r['procedure']}: {r['status']}" + (f" -> {r['report']}" if r.get("report") else "")
+    emit(results, "\n".join(f"{r['procedure']}: {r['status']}"
+                            + (f" -> {r.get('report') or r.get('page')}" if r.get("report") or r.get("page") else "")
                             + (f" [{note}]" if (note := procedures.waiting_note(r)) else "")
                             + (f" ({r['message']})" if r.get("message") else "") for r in results)
          or "No scheduled procedures.")
@@ -548,8 +571,9 @@ def schedule_install(
         line = schedule.cron_line(b) if print_only else schedule.install_cron(b)
         emit({"cron": line}, line if print_only else f"Installed crontab entry:\n{line}")
     elif provider == "github-actions":
-        out = schedule.write_github_procedures(b, package)
-        emit({"workflow": b.rel(out)}, f"Wrote {b.rel(out)}; commit and push it to activate.")
+        out = [schedule.write_github_procedures(b, package), schedule.write_github_rounds(b, package)]
+        rels = [b.rel(p) for p in out if p]
+        emit({"workflows": rels}, f"Wrote {', '.join(rels)}; commit and push to activate.")
     else:
         raise BrainError("provider must be 'cron' or 'github-actions'")
 
@@ -600,14 +624,61 @@ def ci_remind(
 @ci_app.command("decide")
 def ci_decide(author: Annotated[str, typer.Option(help="GitHub login of the person who commented.")]) -> None:
     """Apply the `approve …` / `discard …` lines of a GitHub comment (stdin) as that team member, and push."""
+    _decide_comment(current(), author, sys.stdin.read())
+
+
+@ci_app.command("rounds")
+def ci_rounds() -> None:
+    """Open a GitHub issue for each round that opened, close those whose report is written (needs gh)."""
     b = current()
-    commands = approval.parse_commands(sys.stdin.read())
+    _sync(b)
+    done = rounds.sync_issues(b, _repo_url())
+    emit(done, "\n".join(done) or "No round issues to open or close.")
+
+
+@ci_app.command("reply")
+def ci_reply(
+    author: Annotated[str, typer.Option(help="GitHub login of the person who replied.")],
+    round_id: Annotated[str | None, typer.Option("--round", help="The round of the issue replied on.")] = None,
+) -> None:
+    """A reply on a round's GitHub issue (stdin): `approve …` / `discard …` lines decide; anything else is the
+    person's update, ingested as theirs and pushed. Prints the answer to post."""
+    b = current()
+    text = sys.stdin.read()
+    if approval.parse_commands(text):
+        _decide_comment(b, author, text)
+        return
+    member = _github_member(b, author)
+    [o] = _ingest_note(b, agents.resolve(b), text, member.name, True, round_id=round_id or None, what="Update")
+    if o.status != "ingested":
+        typer.echo(f"Your update could not be taken in: {o.message}")
+        raise typer.Exit(1)
+    counted = (okf.read(b.root / o.source).meta.get("brainforge") or {}).get("rounds") if o.source else None
+    lines = [f"Thanks, @{author}. " + ("Your update is in." if counted else
+                                       f"Round {round_id} has closed; your update went into the brain anyway."
+                                       if round_id else "Your note is in.")]
+    # The ingestion commit is HEAD after the push. A round update's changes wait for its sender.
+    if changes := approval.reminder(b, _repo_url(), only=member if counted else None, since="HEAD~1"):
+        lines += ["", "This is what the brain took from it. If it is right, reply with the `approve …` lines; "
+                  "if not, correct it in another reply.", "", changes]
+    else:
+        lines.append("It didn't change anything in the brain.")
+    typer.echo("\n".join(lines))
+
+
+def _github_member(b: Brain, login: str) -> brain_mod.TeamMember:
+    member = next((m for m in b.manifest.team if m.github and m.github.lower() == login.lower()), None)
+    if not member:
+        typer.echo(f"@{login} has no `github` entry in the brain.yaml team, so nothing was done.")
+        raise typer.Exit(1)
+    return member
+
+
+def _decide_comment(b: Brain, author: str, text: str) -> None:
+    commands = approval.parse_commands(text)
     if not commands:
         return
-    member = next((m for m in b.manifest.team if m.github and m.github.lower() == author.lower()), None)
-    if not member:
-        typer.echo(f"@{author} has no `github` entry in the brain.yaml team, so nothing was decided.")
-        raise typer.Exit(1)
+    member = _github_member(b, author)
     email = member.email or f"{member.github}@users.noreply.github.com"
     baseline, lines, failed = gitops.untracked(b.root), [], 0
     for verb, refs, audience in commands:

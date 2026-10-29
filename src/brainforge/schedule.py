@@ -12,7 +12,7 @@ from pathlib import Path
 
 from cronsim import CronSim
 
-from brainforge import agents, procedures
+from brainforge import agents, gitops, procedures, rounds
 from brainforge.brain import Brain, BrainError, data_text
 from brainforge.procedures import Procedure
 
@@ -53,6 +53,12 @@ def tick(brain: Brain, *, only: str | None = None, now: datetime | None = None, 
             results.append({**result, "status": "ran"})
         except (procedures.ProcedureError, agents.AgentError, BrainError) as exc:
             results.append({"procedure": proc.name, "status": "failed", "message": str(exc)})
+    # Round pages: a new one when a round opens, the report link once its report is written.
+    pages = rounds.write_pages(brain, [r for r in rounds.all_latest(brain, now) if not only or r.proc.name == only])
+    if pages:
+        sha = gitops.commit(brain.root, f"rounds: {len(pages)} page(s)", pages) if commit else None
+        results += [{"procedure": page.split("/")[2], "status": "round page", "page": page, "commit": sha}
+                    for page in pages]
     return results
 
 
@@ -100,8 +106,9 @@ def write_github_procedures(brain: Brain, package: str = "brainforge") -> Path:
     if issues:
         raise BrainError("fix procedure errors first: " + "; ".join(str(i) for i in issues))
     schedules = [
-        f"    - cron: \"{p.schedule.cron}\"\n      timezone: \"{p.schedule.timezone}\"  # {p.name}"
+        f"    - cron: \"{cron}\"\n      timezone: \"{p.schedule.timezone}\"  # {p.name}{what}"
         for p in procs if p.schedule
+        for cron, what in [(p.schedule.cron, ""), *([(p.round.opens, ": round opens")] if p.round else [])]
     ]
     on_schedule = "  schedule:\n" + "\n".join(schedules) + "\n" if schedules else ""
     needs_pandoc = any(p.output.format != "markdown" for p in procs)
@@ -110,6 +117,15 @@ def write_github_procedures(brain: Brain, package: str = "brainforge") -> Path:
     out = brain.root / ".github" / "workflows" / "brainforge-procedures.yml"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(text, encoding="utf-8")
+    return out
+
+
+def write_github_rounds(brain: Brain, package: str = "brainforge") -> Path | None:
+    """Round issues and replies on them; only for brains with a round procedure."""
+    if not any(p.round for p in procedures.load_all(brain)[0]):
+        return None
+    out = brain.root / ".github" / "workflows" / "brainforge-rounds.yml"
+    out.write_text(_workflow("rounds.yml", brain, package), encoding="utf-8")
     return out
 
 

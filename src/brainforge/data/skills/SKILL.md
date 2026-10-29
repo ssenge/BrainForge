@@ -1,6 +1,6 @@
 ---
 name: brainforge
-description: Work with a BrainForge brain, a Git-native knowledge base in Open Knowledge Format. Use when the user wants to ingest a document into their brain, ask what their brain/knowledge base knows, run a brain procedure or report, approve pending brain items, or check a brain's health.
+description: Work with a BrainForge brain, a Git-native knowledge base in Open Knowledge Format. Use when the user wants to ingest a document into their brain, ask what their brain/knowledge base knows, run a brain procedure or report, approve pending brain items, send a status update for a round, or check a brain's health.
 ---
 
 # BrainForge
@@ -18,7 +18,9 @@ description: Work with a BrainForge brain, a Git-native knowledge base in Open K
 | Check the brain | `brainforge brain validate` |
 | Approve my items | `brainforge pending --json`, then `brainforge approve <id>…` / `brainforge discard <id>…` (see Approvals) |
 | Who still has items to approve | `brainforge pending --team` |
-| What needs the user (messages, overdue and soon-due items, approvals) | `brainforge briefing` |
+| What needs the user (messages, rounds waiting for their update, overdue and soon-due items, approvals) | `brainforge briefing` |
+| Send the user's update for a round | `brainforge note "<their update>"` |
+| Who has sent an update to the rounds | `brainforge rounds` |
 | Leave a message for a teammate | `brainforge message send <name> "<text>" [--about <item id>]` |
 | Dismiss the user's messages | `brainforge message dismiss <id>…` |
 | Deadlines into a calendar | Your own calendar tool if you have one (an all-day event with title, date and link); else `brainforge calendar -o deadlines.ics` |
@@ -31,6 +33,7 @@ Rules:
 - Report the command output faithfully, including failures.
 - If a session starts with a BrainForge briefing, tell the user about it in a few lines first.
 - Messages are readable by everyone with access to the brain repository: say so when you send one.
+- If the briefing lists a round waiting for the user's update, offer to take it: ask what changed on their items, what's next and what's blocked, show the update in their words, and send it with `brainforge note` once they confirm. Afterwards, offer to approve what the brain took from it (`brainforge pending`).
 
 ## Approvals
 

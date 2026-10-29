@@ -7,15 +7,14 @@ import shutil
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from cronsim import CronSim, CronSimError
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-from brainforge import agents, approval, gitops, okf, plugins
-from brainforge.brain import AgentConfig, Brain, Layer, blob_hash, instruction_layers, render_layers
-from brainforge.ingest import require_clean
+from brainforge import agents, approval, gitops, ingest, okf, plugins, rounds
+from brainforge.brain import AgentConfig, Brain, BrainError, Layer, blob_hash, instruction_layers, render_layers
 
 FORMATS = {"docx": ".docx", "pptx": ".pptx", "html": ".html", "pdf": ".pdf"}
 
@@ -32,19 +31,21 @@ class Output(BaseModel):
     template: str | None = None  # pandoc --reference-doc, e.g. templates/corporate.pptx
 
 
+def _cron(value: str) -> str:
+    try:
+        CronSim(value, datetime.now(UTC))
+    except CronSimError as exc:
+        raise ValueError(f"invalid cron expression: {exc}") from exc
+    return value
+
+
+Cron = Annotated[str, AfterValidator(_cron)]
+
+
 class Schedule(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    cron: str
+    cron: Cron
     timezone: str = "UTC"
-
-    @field_validator("cron")
-    @classmethod
-    def _cron(cls, value: str) -> str:
-        try:
-            CronSim(value, datetime.now(UTC))
-        except CronSimError as exc:
-            raise ValueError(f"invalid cron expression: {exc}") from exc
-        return value
 
     @field_validator("timezone")
     @classmethod
@@ -71,6 +72,13 @@ class Scope(BaseModel):
         return value
 
 
+class Round(BaseModel):
+    """A window for updates that the procedure's next scheduled run closes; see rounds.py."""
+    model_config = ConfigDict(extra="forbid")
+    opens: Cron  # in the schedule's timezone
+    members: list[str] = Field(default_factory=list, validation_alias="from")  # empty: the whole team
+
+
 class Procedure(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(pattern=r"^[a-z0-9][a-z0-9-]*$")
@@ -81,6 +89,7 @@ class Procedure(BaseModel):
     audience: str | None = None  # one of brain.yaml's audiences: the report sees only approved knowledge meant for it
     output: Output = Field(default_factory=Output)
     schedule: Schedule | None = None
+    round: Round | None = None
     path: Path = Field(exclude=True)
     body: str = Field("", exclude=True)
 
@@ -127,6 +136,13 @@ def load_all(brain: Brain) -> tuple[list[Procedure], list[okf.Issue]]:
             issues.append(okf.Issue("error", brain.rel(p.path), f"template not found: {p.output.template}"))
         if p.audience and p.audience not in brain.manifest.audiences:
             issues.append(okf.Issue("error", brain.rel(p.path), f"audience '{p.audience}' is not in brain.yaml audiences"))
+        if p.round and not p.schedule:
+            issues.append(okf.Issue("error", brain.rel(p.path), "a round needs a schedule: its report closes the round"))
+        for name in p.round.members if p.round else []:
+            try:
+                approval.member(brain, name)
+            except BrainError as exc:
+                issues.append(okf.Issue("error", brain.rel(p.path), f"round: {exc}"))
     return procs, issues
 
 
@@ -175,7 +191,7 @@ def render(brain: Brain, md: Path, fmt: str, template: str | None) -> Path:
 
 
 def build_prompt(brain: Brain, proc: Procedure, layers: list[Layer], report_rel: str,
-                 previous: Path | None, changed: list[str] | None) -> str:
+                 previous: Path | None, changed: list[str] | None, round_text: str = "") -> str:
     prefix = os.path.relpath(brain.knowledge, (brain.root / report_rel).parent)
     prev = f"`{brain.rel(previous)}`" if previous else "none (this is the first report)"
     if changed is None:
@@ -195,7 +211,7 @@ Run procedure `{proc.name}` (version {proc.version}) and write the report to `{r
 - Knowledge files changed since the previous report:
 {delta}
 - Write only `{report_rel}`, markdown body only, without YAML frontmatter.
-"""
+{round_text}"""
 
 
 def run(brain: Brain, proc: Procedure, cfg: AgentConfig, *, instruction: str | None = None,
@@ -220,7 +236,7 @@ def run(brain: Brain, proc: Procedure, cfg: AgentConfig, *, instruction: str | N
         prev_commit = ((meta or {}).get("brainforge") or {}).get("commit")
     changed = gitops.changed_since(root, prev_commit, "knowledge") if prev_commit else None
 
-    require_clean(brain)
+    ingest.require_clean(brain)
     proc_text = proc.path.read_text(encoding="utf-8")
     extra = [Layer(f"Procedure {proc.name} ({brain.rel(proc.path)})", f"{brain.rel(proc.path)}@{blob_hash(proc_text)}", proc.body)]
     if instruction:
@@ -232,6 +248,9 @@ def run(brain: Brain, proc: Procedure, cfg: AgentConfig, *, instruction: str | N
     waiting = approval.pending(brain)
     unapproved = sorted(okf.concept_id(brain.knowledge, i.concept.path) for i in waiting if not i.expired)
     expired = sorted(okf.concept_id(brain.knowledge, i.concept.path) for i in waiting if i.expired)
+    r = rounds.latest(brain, proc, now) if proc.round else None
+    ups, missing = (rounds.updates(brain, r), rounds.missing(brain, r)) if r else ([], [])
+    round_text = rounds.prompt(r, ups, missing, paths=not proc.audience) if r else ""
 
     with gitops.lock(root):
         try:
@@ -240,12 +259,14 @@ def run(brain: Brain, proc: Procedure, cfg: AgentConfig, *, instruction: str | N
                 # The agent works on a copy with only what this audience may see; nothing else comes back.
                 with approval.view(brain, proc.audience, [previous] if previous else []) as (view_root, allowed):
                     changed = [p for p in changed if p in allowed] if changed is not None else None
-                    agents.run(cfg, build_prompt(brain, proc, layers, report_rel, previous, changed), view_root, write=True)
+                    agents.run(cfg, build_prompt(brain, proc, layers, report_rel, previous, changed, round_text), view_root,
+                               write=True)
                     if (view_root / report_rel).is_file():
                         report.parent.mkdir(parents=True, exist_ok=True)
                         shutil.copy2(view_root / report_rel, report)
             else:
-                agents.run(cfg, build_prompt(brain, proc, layers, report_rel, previous, changed), root, write=True)
+                agents.run(cfg, build_prompt(brain, proc, layers, report_rel, previous, changed, round_text), root,
+                           write=True)
             stray = [p for c, p in gitops.status(root) if p != report_rel and not (c == "??" and p in baseline)]
             if stray:
                 raise ProcedureError(f"agent changed files other than the report: {', '.join(stray)}")
@@ -265,6 +286,8 @@ def run(brain: Brain, proc: Procedure, cfg: AgentConfig, *, instruction: str | N
                 "procedure": {"name": proc.name, "version": proc.version},
                 "brain": brain.id,
                 **({"audience": proc.audience} if proc.audience else {}),
+                **({"round": {"id": r.id, "updates": [u.rel for u in ups], "missing": [m.name for m in missing]}}
+                   if r else {}),
                 "generated": {"by": agents.actor(cfg), "at": okf.now_iso(now)},
                 "sources": sources,
                 "brainforge": {
@@ -281,10 +304,11 @@ def run(brain: Brain, proc: Procedure, cfg: AgentConfig, *, instruction: str | N
             outputs = [report_rel]
             if proc.output.format != "markdown":
                 outputs.append(brain.rel(render(brain, report, proc.output.format, proc.output.template)))
+            pages = rounds.write_pages(brain, [r]) if r else []  # the round page links its report
             sha = None
             if commit:
                 sha = gitops.commit(root, f"report: {proc.name} {date}\n\nBrainForge-Procedure: {proc.name}@{proc.version}\n"
-                                          f"BrainForge-Knowledge-Commit: {base}", outputs)
+                                          f"BrainForge-Knowledge-Commit: {base}", outputs + pages)
         except Exception:
             gitops.rollback(root, baseline)
             raise

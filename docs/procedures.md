@@ -19,6 +19,9 @@ output:
 schedule:                        # optional
   cron: "0 8 * * 3"
   timezone: Europe/Berlin
+round:                           # optional, needs a schedule: see Rounds below
+  opens: "0 8 * * 1"             # cron, in the schedule's timezone
+  from: [Alice Smith, Bob]       # default: the whole team
 ---
 
 # Weekly Customer Report
@@ -69,6 +72,28 @@ To reproduce a report's input, run `git checkout <commit>`.
 - **Approvals never hold a report back.** Every report lists in its frontmatter what still awaited approval (`unapproved`) and what was past its review date (`expired`) when it ran, and `run` and `schedule tick` print the counts.
 - **`audience: <name>`** builds the report only from approved knowledge meant for that audience or a wider one. The agent works on a throwaway copy that contains just those concepts, with fresh index files and no archive, log or configuration, so internal items aren't there to leak. Afterwards BrainForge rejects the report if it cites any concept outside that set. The report records `audience` in its frontmatter.
 - Without `audience`, reports see everything and mark facts from pending items as "(unconfirmed)".
+
+## Rounds: asynchronous status meetings
+
+A round replaces a status meeting. Instead of dialling in at the same time, the participants send an update while the round is open, and the procedure's report closes it.
+
+- **When:** a round opens at its `opens` cron and closes at the procedure's next scheduled run, whose report reads the updates. With the example above, the round runs from Monday 08:00 to the Wednesday report. Several procedures can have rounds, open at the same time, for example an operational one for the client from Monday to Tuesday and a management one from Tuesday to Wednesday.
+- **Who:** `from` lists team members (name, alias, email or GitHub login from `brain.yaml`); without it, the whole team takes part.
+- **What counts as an update:** anything a participant sends while their round is open:
+  - `brainforge note "…"`, or their agent (Claude Code through the skill, Claude Desktop through `add_note` of `brainforge mcp --write`);
+  - a file pushed to `inbox/`, for example a voice memo transcribed on the phone; the commit's author is the sender. Name it `update-….md` (or `.txt`) when it is your own update rather than, say, minutes;
+  - a reply on the round's GitHub issue ([automation.md](automation.md#rounds-on-github)); it counts only for that issue's round.
+
+  One update counts for every open round the sender takes part in. Ingestion records on the source who sent it, when, and which rounds it counts for (`brainforge.from`, `sent`, `rounds`).
+- **Approval:** what the brain took from someone's own update (a note, an agent note, a reply on the round's issue, or an inbox file named `update-…`) waits for their approval, not the usual approvers: they know best what they meant. Other documents brought in during a round, such as minutes, count for the round but keep the usual routing.
+- **No update is fine.** The report says who sent none, plainly, and their items keep their last known state.
+- **The report** gets the round's updates, as source concepts it can cite, and the names of who sent none, and records them in its frontmatter: `round: {id: weekly-report/2026-11-02, updates: […], missing: [Bob Lee]}`. A report with an `audience` gets the names only, since the update sources may not be meant for that audience.
+- **The round page** `reports/rounds/<procedure>/<date>.md` shows who has sent what, with links, and the report once it is written. Ingestion and `schedule tick` keep it current; GitHub shows it with the repository's access control, and so does Obsidian.
+
+```bash
+brainforge rounds        # the latest round of each procedure: open or closed, who has sent an update, who hasn't
+brainforge briefing      # lists open rounds still waiting for your update
+```
 
 ## Rules for runs and output
 

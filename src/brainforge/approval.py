@@ -101,13 +101,57 @@ def approvers(brain: Brain, c: okf.Concept) -> list[TeamMember]:
     return next(([m] for m in team if any(_matches(c.meta, r) for r in m.approves)), [])
 
 
-def me(brain: Brain) -> TeamMember | None:
-    email = gitops.git(brain.root, "config", "user.email", check=False).strip().lower()
-    name = gitops.git(brain.root, "config", "user.name", check=False).strip().lower()
+def member(brain: Brain, name: str) -> TeamMember:
+    """A team member by name, alias, email or GitHub login."""
+    key = name.strip().lstrip("@").lower()
+    found = [m for m in brain.manifest.team
+             if key in [m.name.lower(), (m.email or "").lower(), (m.github or "").lower(), *map(str.lower, m.aliases)]]
+    if len(found) != 1:
+        names = ", ".join(m.name for m in brain.manifest.team) or "none (add a team to brain.yaml)"
+        raise BrainError(f"no single team member '{name}'; the team: {names}")
+    return found[0]
+
+
+def member_of(brain: Brain, name: str, email: str) -> TeamMember | None:
+    """The team member behind a git identity. GitHub's noreply addresses map to the `github` login."""
+    name, email = name.strip().lower(), email.strip().lower()
+    login = email.split("@")[0].split("+")[-1] if email.endswith("@users.noreply.github.com") else ""
     for m in brain.manifest.team:
-        if (email and (m.email or "").lower() == email) or (name and m.name.lower() == name):
+        if ((email and (m.email or "").lower() == email) or (name and m.name.lower() == name)
+                or (login and (m.github or "").lower() == login)):
             return m
     return None
+
+
+def me(brain: Brain) -> TeamMember | None:
+    return member_of(brain, gitops.git(brain.root, "config", "user.name", check=False),
+                     gitops.git(brain.root, "config", "user.email", check=False))
+
+
+def author(brain: Brain) -> str:
+    """The team name if git's identity matches a member, else git's own name."""
+    who = me(brain)
+    ident = gitops.git(brain.root, "var", "GIT_AUTHOR_IDENT", check=False).rsplit(" <", 1)[0].strip()
+    return who.name if who else ident or "unknown"
+
+
+WRITTEN = ("note-", "update-")  # notes, replies and agent notes are named so; a file named so is someone's own words
+
+
+def _sender(brain: Brain, rel: str) -> list[TeamMember]:
+    """A change made from someone's own round update waits for them: they know best what they meant.
+    Other documents brought in during a round, such as minutes, keep the usual routing."""
+    sha = version(brain.root, rel)
+    source = gitops.trailers(brain.root, sha).get("BrainForge-Source") if sha else None
+    if not source:
+        return []
+    try:
+        meta = okf.read(brain.root / source).meta.get("brainforge") or {}
+    except (okf.OKFError, OSError):
+        return []
+    own = str(meta.get("original_name", "")).startswith(WRITTEN)
+    sender = meta.get("from") if own and meta.get("rounds") else None
+    return [m for m in brain.manifest.team if m.name == sender]
 
 
 def version(root: Path, rel: str) -> str | None:
@@ -166,7 +210,7 @@ def pending(brain: Brain) -> list[Item]:
         rel = brain.rel(c.path)
         if state(c) == "pending":
             found = last_approved(brain.root, rel)
-            items.append(Item(c, rel, approvers(brain, c), found[0] if found else None))
+            items.append(Item(c, rel, _sender(brain, rel) or approvers(brain, c), found[0] if found else None))
         elif expired(c, now):
             items.append(Item(c, rel, approvers(brain, c), None, expired=True))
     return items

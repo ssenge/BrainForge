@@ -1,5 +1,5 @@
 name: pm
-version: 2
+version: 3
 description: Project management - milestones, decisions, actions, and a RAID log (risks, assumptions, issues, dependencies).
 types:
   - type: Milestone

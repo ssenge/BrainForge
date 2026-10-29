@@ -29,6 +29,7 @@ BrainForge turns documents into a structured, versioned knowledge base, called a
 | **Serverless, local-first** | No application server, database, vector store, registry or always-on agent. Cron and GitHub Actions are optional triggers. |
 | **Secure by design** | Documents are treated as untrusted data, which defends against prompt injection. Agents get least-privilege tools (files only, no shell, no network) and run isolated from personal agent configs. An `allowed` list restricts which providers see the data. BrainForge never force-pushes. |
 | **Human in the loop, decentralized** | Everything the agent extracts arrives as *pending*. Each team member approves or discards their own items, routed by owner, from their own machine; a scanner shows who still has to act before a report. Every decision is a commit by the person who made it. |
+| **Asynchronous status meetings** | A round collects updates instead of a meeting: people send a note, a file or a reply on the round's GitHub issue while it is open, each confirms what the brain took from theirs, and the report closes the round. Several rounds can run at once. See [Rounds](#rounds-asynchronous-status-meetings). |
 | **Audiences** | Each brain defines its own audiences, such as `client` / `internal`. A report for an audience sees only approved knowledge meant for it, enforced by code rather than by prompt. |
 | **Plugins** | The core is domain-neutral. Plugins add types with checked fields, instructions, reports and scripts for a domain. The bundled `pm` plugin covers project management: milestones, decisions, actions and a RAID log. See [docs/plugins.md](docs/plugins.md). |
 | **Agent skills and MCP** | One command installs a Claude Code or Codex skill, and `brainforge mcp` serves brains to Claude Desktop or any MCP client, read-only unless you let it record your approvals. See [Ask your brain](#ask-your-brain-from-claude-desktop-or-any-agent). |
@@ -263,9 +264,10 @@ For a status question, Claude reads the latest weekly report plus the milestone,
 | `pending` | Your pending items (`scope: all` for everyone's). Each has a `ref` (`id@version`), a link, and for a changed item the diff against the approved version. |
 | `approve`, `discard` | Records a decision as your git identity (`git config user.email` in the clone), commits, and pushes when the brain has a remote. Only `ref` values from `pending` are accepted, so a decision on an item that changed since Claude showed it stops. |
 | `send_message`, `dismiss_messages` | Leaves a message for a teammate when you ask; removes your own messages once you're done with them. |
+| `add_note` | Sends your note to the brain, such as your update for a round, after you confirmed its text: a file in `inbox/`, committed as you and pushed, which the inbox workflow ingests. |
 
 Options:
-- `--write` adds the approval and message tools; without it, the server can't change anything.
+- `--write` adds the approval, message and note tools; without it, the server can't change anything.
 - `--no-pull` disables the automatic sync.
 - Without arguments, the server serves the brain in the current directory.
 - Pulling a private repository uses your normal git credentials (keychain or SSH agent).
@@ -428,6 +430,27 @@ brainforge calendar -o deadlines.ics   # your open deadlines; --all for everyone
 ```
 Import the file into any calendar; importing it again updates the events. An agent with a calendar tool, such as Google Calendar in Claude, can also add a deadline when you ask. BrainForge itself never touches calendar credentials.
 
+## Rounds: asynchronous status meetings
+
+A round replaces a status meeting: instead of dialling in at the same time, people send their update while the round is open, and a report closes it. A round belongs to a scheduled procedure:
+
+```yaml
+# procedures/operational-status.md (frontmatter)
+schedule: {cron: "0 18 * * 2", timezone: Europe/Berlin}   # Tuesday 18:00: the report closes the round
+round:
+  opens: "0 8 * * 1"                                      # Monday 08:00
+  from: [Alice Smith, Bob Lee]                            # default: the whole team
+```
+
+- **Several rounds at once.** An operational round for the client from Monday to Tuesday and a management round from Tuesday to Wednesday can overlap; the pm plugin ships both as examples (`operational-status`, `management-status`).
+- **Sending an update:** `brainforge note "…"`, telling your agent (Claude Code, or Claude Desktop with `add_note`), a file in `inbox/` (for example a voice memo your phone transcribed), or a reply on the round's GitHub issue. An update counts for every open round you take part in; a reply on an issue counts for its round.
+- **You confirm what the brain understood.** The items it changed or created from your own update (a note, a reply, or an inbox file named `update-…`) wait for *your* approval. On GitHub, the answer to your reply lists them as `approve …` lines. Other documents sent during a round, such as minutes, go to the usual approvers.
+- **No update is fine.** The report names who sent none, plainly, and closes the round on time anyway.
+- **Who has sent what:** `brainforge rounds`, the briefing ("Rounds waiting for your update"), and the round page `reports/rounds/<procedure>/<date>.md`, which GitHub shows with the repository's access control. It changes with every update; reload it to see new ones.
+- **On GitHub**, `brainforge schedule install --provider github-actions` adds a workflow that opens an issue per round, @mentioning the participants with their open items, takes replies in as updates, and closes the issue with a link to the report.
+
+Details: [docs/procedures.md](docs/procedures.md#rounds-asynchronous-status-meetings), [docs/automation.md](docs/automation.md#rounds-on-github).
+
 ## Agents and authentication
 
 BrainForge never touches credentials; it runs the agent CLI, which logs itself in.
@@ -461,7 +484,8 @@ With `adapter: command`, any program works. It receives the prompt on stdin, run
 | `ingest FILE…` | Ingest documents (`--instruction`, `--dry-run`, `--force`, `--no-commit`, `--push`, `--allow-secrets`) |
 | `inbox process` | Ingest everything in `inbox/` |
 | `note TEXT` | Ingest a typed note (a correction, a fact from a call) as a source by you; `-` reads stdin |
-| `briefing` | What needs you: messages, overdue and soon-due items, approvals (`--for NAME`; `--hook` for an agent's session start) |
+| `briefing` | What needs you: messages, rounds waiting for your update, overdue and soon-due items, approvals (`--for NAME`; `--hook` for an agent's session start) |
+| `rounds` | The latest round of each procedure: open or closed, who has sent an update, who hasn't |
 | `message send TO TEXT`, `message dismiss ID…` | Messages for team members, stored in the brain repository and readable by everyone with access (`--about ITEM`, `--all`, `--push`) |
 | `calendar` | Open deadlines as an iCalendar file (`--all`, `--for NAME`, `-o FILE`) |
 | `knowledge search [TEXT]` | Deterministic search (`--type`, `--tag`, `--status`, `--approval`, `--links-to`, `--linked-from`) |
@@ -475,6 +499,7 @@ With `adapter: command`, any program works. It receives the prompt on stdin, run
 | `schedule install --provider cron\|github-actions` | Install the scheduler |
 | `ci install` | GitHub Actions workflows for inbox ingestion and, with `github` logins in the team, approvals (`--remind CRON`) |
 | `ci remind [--notify]`, `ci decide --author LOGIN` | Used by the approvals workflow: the reminder text, with `--notify` first the messages about newly overdue items; apply a comment's decisions |
+| `ci rounds`, `ci reply --author LOGIN --round ID` | Used by the rounds workflow: open and close round issues; take a reply in as the person's update |
 | `plugin add NAME\|PATH\|GIT-URL`, `plugin list`, `plugin run PLUGIN SCRIPT [ARGS…]` | Add a plugin to the brain (`init --plugin NAME` does it at creation), list plugins, run a plugin script |
 | `skills install claude\|codex [--user]` | Agent skill that wraps the CLI |
 | `workspace open` | Open the brain as an Obsidian vault |

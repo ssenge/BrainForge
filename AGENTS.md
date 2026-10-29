@@ -31,8 +31,9 @@ Run all three checks before you commit. They are all clean on `main`.
 | `src/brainforge/query.py` | Read-only question answering by an agent, with citation checks |
 | `src/brainforge/procedures.py` | Markdown procedures → reports (pandoc for DOCX/PPTX/HTML/PDF) |
 | `src/brainforge/schedule.py` | `schedule tick`, plus generators for cron entries and GitHub workflows |
+| `src/brainforge/rounds.py` | Rounds (asynchronous status meetings): windows from procedure crons, updates per round, the round page, round issues via `gh` |
 | `src/brainforge/briefing.py` | Deadlines from plugin types, messages (`messages/<member>/`), overdue notices, the briefing, the iCalendar export |
-| `src/brainforge/mcp_server.py` | MCP server (`list_brains`, `search`, `read`, `briefing`; with `--write` also `pending`, `approve`, `discard`, `send_message`, `dismiss_messages`) for Claude Desktop and others |
+| `src/brainforge/mcp_server.py` | MCP server (`list_brains`, `search`, `read`, `briefing`; with `--write` also `pending`, `approve`, `discard`, `send_message`, `dismiss_messages`, `add_note`) for Claude Desktop and others |
 | `src/brainforge/plugins.py` | Plugins: load, add (copy into the brain), types → instruction layer and field checks, scripts |
 | `plugins/` | Bundled plugins, e.g. `plugins/pm` (project management). Shipped in the wheel as `brainforge/bundled_plugins` |
 | `src/brainforge/integrations.py` | Agent skill install, Obsidian vault config |
@@ -57,7 +58,7 @@ Run all three checks before you commit. They are all clean on `main`.
 ## Conventions
 
 - **Don't overengineer.** Prefer git, the stdlib and existing dependencies over new mechanisms. Mark deliberate shortcuts with a `# ponytail:` comment that names the limit and the upgrade path.
-- **External tools run as subprocesses:** `git`, `claude`, `codex`, `pandoc`. No GitPython, no agent SDKs.
+- **External tools run as subprocesses:** `git`, `claude`, `codex`, `pandoc`, `gh` (round issues in CI). No GitPython, no agent SDKs.
 - **Typer 0.27 vendors click.** Use `typer.Exit`, `typer.Abort` and `typer.exceptions.TyperException`; never `import click`.
 - **CLI exit codes:** 0 ok, 1 failure, 2 usage or config error (`BrainError`), 3 partial failure.
 - **Command output goes through `emit()` in `cli.py`**, which honours the global `--json`.

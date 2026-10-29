@@ -1,6 +1,6 @@
 # pm: project management plugin
 
-Adds project-management knowledge to a brain: milestones, decisions, action items and a RAID log (risks, assumptions, issues, dependencies), plus a status report. Actions, milestones and dependencies have deadlines, so overdue items reach their owners (`brainforge briefing`, messages, calendar).
+Adds project-management knowledge to a brain: milestones, decisions, action items and a RAID log (risks, assumptions, issues, dependencies), plus status reports, two of them fed by rounds (asynchronous status meetings). Actions, milestones and dependencies have deadlines, so overdue items reach their owners (`brainforge briefing`, messages, calendar).
 
 ```bash
 brainforge plugin add pm                 # or: brainforge init my-project --plugin pm
@@ -13,6 +13,7 @@ git add plugins && git commit -m "plugin: pm"
 | `instructions/ingestion.md` | How to tell a risk from an issue, keep a milestone's baseline date, record decisions and commitments, and mark items finished when a document says so. |
 | `instructions/query.md` | Status questions start from the latest status report and name overdue actions. |
 | `procedures/status-report.md` | `brainforge run status-report`: milestones, decisions, open actions, RAID. Uncomment `audience` or `schedule` as needed. |
+| `procedures/operational-status.md`, `procedures/management-status.md` | Two reports with a [round](../../docs/procedures.md#rounds-asynchronous-status-meetings) each, an asynchronous status meeting: the team sends updates from Monday to Tuesday for the client report, the leads from Tuesday to Wednesday for management. Uncomment `schedule` and `round` to use them. |
 
 Suggested `brain.yaml` lines, so people approve the project items but not every person or topic page:
 

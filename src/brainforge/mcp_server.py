@@ -2,18 +2,19 @@
 
 The calling agent does the reasoning. BrainForge only serves the knowledge, deterministically:
 no nested agent run, no writes except `git pull --ff-only` to pick up what CI ingested.
-With `write=True` (opt-in), it also records the user's own approve/discard decisions and their messages.
+With `write=True` (opt-in), it also records the user's own approve/discard decisions, their messages and notes.
 """
 
 from __future__ import annotations
 
 import time
+from datetime import datetime
 from typing import Any
 
 from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 
-from brainforge import __version__, approval, briefing, gitops, okf, procedures
+from brainforge import __version__, approval, briefing, gitops, ingest, okf, procedures
 from brainforge.brain import Brain, data_text, instruction_layers
 
 PULL_EVERY = 300  # seconds between `git pull` per brain
@@ -30,8 +31,8 @@ For status questions, start with the latest report from `list_brains`.
 Search results carry a `url` that opens the concept in Obsidian: cite concepts as markdown links to it, e.g. [Go-live](url).
 `approval: pending` means no person has approved the concept yet: say so when an answer rests on it.
 
-At the start of a conversation, call `briefing` once. If it lists messages, overdue items or items due soon, tell
-the user in a few lines, with links, before you answer their first request. Messages are files in the brain
+At the start of a conversation, call `briefing` once. If it lists messages, rounds waiting for the user's update,
+overdue items or items due soon, tell the user in a few lines, with links, before you answer their first request. Messages are files in the brain
 repository: everyone with access to it can read them. To put a deadline in the user's calendar, use your own
 calendar tool if you have one (an all-day event with the title, date and link); else suggest `brainforge calendar`.
 
@@ -50,6 +51,8 @@ Writing is enabled: you record the user's own decisions on knowledge awaiting ap
    Discard retires it.
 5. `send_message` only when the user asks you to, with their words; say that everyone with access to the brain
    can read it. `dismiss_messages` once the user is done with a message from the briefing.
+6. A round waiting for the user's update: offer to take it. Ask what changed on their items, what's next and
+   what's blocked, show the update in their words, and only after they confirm, call `add_note`.
 
 """
 
@@ -173,8 +176,8 @@ def briefings(brains: Brains, brain: str | None = None) -> list[dict[str, Any]]:
 def send_message(brains: Brains, to: str, text: str, about: str | None = None,
                  brain: str | None = None) -> dict[str, Any]:
     b = brains.get(brain)
-    m = briefing.member(b, to)
-    [rel] = gitops.change(b.root, f"message: to {m.name}", lambda: [briefing.send(b, m, text, briefing.author(b), about)],
+    m = approval.member(b, to)
+    [rel] = gitops.change(b.root, f"message: to {m.name}", lambda: [briefing.send(b, m, text, approval.author(b), about)],
                           b.manifest.git.commit and gitops.has_upstream(b.root))
     return {"to": m.name, "path": rel, "note": "Everyone with access to the brain repository can read it."}
 
@@ -186,6 +189,26 @@ def dismiss_messages(brains: Brains, ids: list[str], brain: str | None = None) -
     rels = gitops.change(b.root, "message: dismissed {n}", lambda: briefing.dismiss(b, who, ids),
                          b.manifest.git.commit and gitops.has_upstream(b.root))
     return {"dismissed": rels}
+
+
+def add_note(brains: Brains, text: str, brain: str | None = None) -> dict[str, Any]:
+    """Drop the user's note into the inbox as a commit by them; CI (or `brainforge inbox process`) ingests it.
+    No agent runs here."""
+    b = brains.get(brain)
+    if secrets := ingest.find_secrets(text):
+        raise ValueError(f"the note looks like it contains a credential ({'; '.join(secrets)}); everyone with access "
+                         "to the brain repository could read it")
+    who = approval.author(b)
+    name, content = ingest.note(who, text, datetime.now().astimezone())
+
+    def make() -> list[str]:
+        b.inbox.mkdir(exist_ok=True)
+        (b.inbox / name).write_text(content, encoding="utf-8")
+        return [b.rel(b.inbox / name)]
+
+    [rel] = gitops.change(b.root, f"inbox: note by {who}", make, b.manifest.git.commit and gitops.has_upstream(b.root))
+    return {"path": rel, "note": "The brain ingests it after the push (or at `brainforge inbox process`). In an open "
+            "round the user takes part in, it is their update, and its changes wait for their approval."}
 
 
 def build(roots: list[Brain], pull: bool = True, write: bool = False) -> MCPServer:
@@ -244,6 +267,12 @@ def build(roots: list[Brain], pull: bool = True, write: bool = False) -> MCPServ
         Only when the user asks. `about`: the item it concerns, e.g. risks/vendor-delay. Readable by everyone
         with access to the brain."""
         return send_message(brains, to, text, about, brain)
+
+    @server.tool(name="add_note", annotations=DECIDE)
+    def add_note_tool(text: str, brain: str | None = None) -> dict[str, Any]:
+        """Send the user's note to the brain, e.g. their update for a round or a correction, in their words.
+        Only after the user confirmed the text. Readable by everyone with access to the brain."""
+        return add_note(brains, text, brain)
 
     @server.tool(name="dismiss_messages", annotations=UNDO)
     def dismiss_messages_tool(ids: list[str], brain: str | None = None) -> dict[str, Any]:

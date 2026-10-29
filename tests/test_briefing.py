@@ -6,8 +6,8 @@ from datetime import date, timedelta
 import pytest
 from conftest import commits, write
 
+from brainforge import approval, briefing, gitops, mcp_server, plugins
 from brainforge import brain as brain_mod
-from brainforge import briefing, gitops, mcp_server, plugins
 from brainforge.brain import BrainError
 
 TEAM = """
@@ -46,7 +46,7 @@ def ids(entries):
 
 
 def test_deadlines_come_from_plugin_types(pm_team):
-    alice = briefing.briefing(pm_team, briefing.member(pm_team, "@alice-gh"))
+    alice = briefing.briefing(pm_team, approval.member(pm_team, "@alice-gh"))
     assert ids(alice["overdue"]) == ["actions/send-contract"] and alice["due_soon"] == []
     everyone = briefing.briefing(pm_team, None)
     assert ids(everyone["due_soon"]) == ["milestones/go-live"] and everyone["due_soon"][0]["approvers"] == ["Bob Lee"]
@@ -89,7 +89,7 @@ def test_overdue_items_are_notified_once_per_item_and_date(pm_team, run_cli, mon
         "- [Send contract](https://github.com/acme/brain/blob/HEAD/knowledge/actions/send-contract.md) "
         f"(Action Item, due {LATE})\n")
     assert commits(root)[0] == "notify: 1 overdue item(s)"
-    [notice] = briefing.messages(pm_team, briefing.member(pm_team, "Alice Smith"))
+    [notice] = briefing.messages(pm_team, approval.member(pm_team, "Alice Smith"))
     assert notice.sender == "BrainForge" and notice.about == "actions/send-contract" and "brainforge note" in notice.text
 
     assert run_cli("--brain", root, "ci", "remind", "--notify")[1] == ""

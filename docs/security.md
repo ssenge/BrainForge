@@ -39,6 +39,12 @@ BrainForge processes confidential documents with LLM agents. This document descr
 - Messages never reach an ingestion or report agent: agents see `knowledge/` only, and audience views copy nothing else.
 - A brain's `.claude/settings.json` runs `brainforge briefing --hook` when Claude Code starts a session in the brain folder. Claude Code asks you to trust a folder before it runs its hooks. Agent runs by BrainForge don't load it: they run with `--bare` or `--setting-sources ""`.
 
+## Rounds
+
+- A round update is a document like any other: untrusted data for the agent, scanned for credentials, archived in git, and readable by everyone with access to the repository.
+- A reply on a round issue becomes an update only when the commenter has write access (`author_association` OWNER, MEMBER or COLLABORATOR) *and* is listed with that `github` login in `brain.yaml`. The reply reaches BrainForge as an environment variable, never as part of the script.
+- What the brain took from someone's own update waits for their approval. The sender is the person behind the note, the GitHub reply or the git commit of an inbox file; as with all approvals, this routes the work, it isn't access control.
+
 ## Plugins
 
 - A plugin lives in the brain repository (`plugins/<name>/`), so it is reviewed and versioned like everything else. Its instructions come after the framework policy, which they can't override.

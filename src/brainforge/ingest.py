@@ -12,7 +12,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
-from brainforge import agents, approval, gitops, okf, parsers, plugins
+from brainforge import agents, approval, gitops, okf, parsers, plugins, rounds
 from brainforge.brain import (
     AgentConfig,
     Brain,
@@ -213,7 +213,12 @@ def ingest(
     dry_run: bool = False,
     commit: bool = True,
     allow_secrets: bool = False,
+    sender: str | None = None,
+    sent: datetime | None = None,
+    round_id: str | None = None,
 ) -> Outcome:
+    """`sender` (default: you) and `sent` (default: now) say who brought the document in and when; they decide
+    which open rounds it counts for. `round_id` limits that to one round (a reply on its GitHub issue)."""
     path = path.resolve()
     name = path.name
     if not path.is_file():
@@ -263,6 +268,8 @@ def ingest(
                 gitops.rollback(root, baseline)
                 return Outcome(name, "dry-run", "agent output valid; nothing applied", brain.rel(source), created, updated)
 
+            sender, sent = sender or approval.author(brain), sent or datetime.now(UTC)
+            counted = rounds.counting(brain, sender, sent, round_id)
             now, by, known = okf.now_iso(), agents.actor(cfg), plugins.types(brain)
             for p in created + updated:
                 c = okf.read(root / p)
@@ -278,6 +285,8 @@ def ingest(
                     "sha256": digest, "original_name": name, "entry": entry,
                     "agent": f"{cfg.adapter}/{cfg.model or 'default'}", "base_commit": base,
                     "instructions": [layer.source for layer in layers],
+                    "from": sender, "sent": okf.now_iso(sent),
+                    **({"rounds": [r.id for r in counted]} if counted else {}),
                 },
             }, created, updated)
             src_concept = okf.read(source)
@@ -299,12 +308,14 @@ def ingest(
             okf.write_indexes(brain.knowledge)
             okf.append_log(brain.knowledge, f"**Ingestion**: [{name}](sources/{source.name}) — "
                                             f"{len(created)} created, {len(updated)} updated.")
+            pages = rounds.write_pages(brain, counted)
             sha = None
             if commit:
                 run_id = f"{datetime.now(UTC):%Y%m%dT%H%M%SZ}-{short[:8]}"
                 message = (f"ingest: {name}\n\n{len(created)} concepts created, {len(updated)} updated.\n\n"
                            f"BrainForge-Run: {run_id}\nBrainForge-Source: {brain.rel(source)}\nBrainForge-Agent: {by}")
-                sha = gitops.commit(root, message, ["knowledge", f"archive/{short}", *(brain.rel(s) for s, _ in moved)])
+                sha = gitops.commit(root, message, ["knowledge", f"archive/{short}", *(brain.rel(s) for s, _ in moved),
+                                                    *pages])
             return Outcome(name, "ingested", f"{len(created)} created, {len(updated)} updated",
                            brain.rel(source), created, updated, sha)
         except Exception as exc:
@@ -314,6 +325,11 @@ def ingest(
             if isinstance(exc, (agents.AgentError, IngestError, okf.OKFError, gitops.GitError)):
                 return Outcome(name, "failed", str(exc))
             raise
+
+
+def note(author: str, text: str, at: datetime, what: str = "Note") -> tuple[str, str]:
+    """File name and content of a typed note, which is ingested like any document."""
+    return f"{what.lower()}-{at:%Y-%m-%d-%H%M%S}.md", f"# {what} by {author}, {at:%Y-%m-%d %H:%M}\n\n{text.strip()}\n"
 
 
 def _drop_duplicate(brain: Brain, path: Path, msg: str, commit: bool) -> None:
@@ -340,5 +356,10 @@ def process_inbox(brain: Brain, cfg: AgentConfig, **kwargs) -> tuple[list[Outcom
         added_in = gitops.adding_commit(brain.root, brain.rel(doc))
         note_text = gitops.trailers(brain.root, added_in).get("Ingest-Note") if added_in else None
         note = Layer("Commit note (Ingest-Note trailer)", f"commit:{added_in[:12]}", note_text) if note_text and added_in else None
-        outcomes.append(ingest(brain, doc, cfg, note=note, entry="inbox", **kwargs))
+        sender = sent = None
+        if added_in:  # whoever committed the file sent it
+            name, email, at = gitops.git(brain.root, "log", "-1", "--format=%an%x00%ae%x00%aI", added_in).strip().split("\0")
+            who = approval.member_of(brain, name, email)
+            sender, sent = (who.name if who else name), datetime.fromisoformat(at)
+        outcomes.append(ingest(brain, doc, cfg, note=note, entry="inbox", sender=sender, sent=sent, **kwargs))
     return outcomes, orphans

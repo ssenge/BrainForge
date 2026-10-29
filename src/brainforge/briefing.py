@@ -1,4 +1,4 @@
-"""What needs a person: messages, deadlines (overdue, due soon) and approvals, as one briefing.
+"""What needs a person: messages, open rounds, deadlines (overdue, due soon) and approvals, as one briefing.
 
 - Messages are files in the brain repository, `messages/<member>/<id>.md`, so teammates, CI and BrainForge can
   leave them and every clone sees them. Everyone with access to the repository can read them.
@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from brainforge import approval, gitops, ingest, okf, plugins
+from brainforge import approval, gitops, ingest, okf, plugins, rounds
 from brainforge.brain import Brain, BrainError, TeamMember, slugify
 
 DUE_SOON_DAYS = 3  # ponytail: fixed window; a brain.yaml setting if teams want another one
@@ -49,26 +49,6 @@ class Due:
         return {"id": self.id, "type": c.meta.get("type"), "title": c.title, "due": self.when.isoformat(),
                 "url": approval.url(c.path), "owner": c.meta.get("owner"), "approvers": [m.name for m in self.owners],
                 "approval": approval.state(c)}
-
-
-# --- people --------------------------------------------------------------------------------------
-
-def member(brain: Brain, name: str) -> TeamMember:
-    """A team member by name, alias, email or GitHub login."""
-    key = name.strip().lstrip("@").lower()
-    found = [m for m in brain.manifest.team
-             if key in [m.name.lower(), (m.email or "").lower(), (m.github or "").lower(), *map(str.lower, m.aliases)]]
-    if len(found) != 1:
-        names = ", ".join(m.name for m in brain.manifest.team) or "none (add a team to brain.yaml)"
-        raise BrainError(f"no single team member '{name}'; the team: {names}")
-    return found[0]
-
-
-def author(brain: Brain) -> str:
-    """The team name if git's identity matches a member, else git's own name."""
-    who = approval.me(brain)
-    ident = gitops.git(brain.root, "var", "GIT_AUTHOR_IDENT", check=False).rsplit(" <", 1)[0].strip()
-    return who.name if who else ident or "unknown"
 
 
 # --- messages ------------------------------------------------------------------------------------
@@ -155,7 +135,8 @@ def notify(brain: Brain, today: date | None = None) -> list[tuple[TeamMember, Du
 # --- the briefing --------------------------------------------------------------------------------
 
 def briefing(brain: Brain, who: TeamMember | None, today: date | None = None) -> dict[str, Any]:
-    """Messages, overdue and soon-due items, and approvals for one person; everyone's when `who` is None."""
+    """Messages, open rounds, overdue and soon-due items, and approvals for one person; everyone's when `who`
+    is None."""
     today = today or date.today()
     due = [d for d in deadlines(brain) if who is None or who in d.owners]
     pending = approval.pending_for(brain, who)
@@ -164,6 +145,7 @@ def briefing(brain: Brain, who: TeamMember | None, today: date | None = None) ->
         "for": who.name if who else None,
         "date": today.isoformat(),
         "messages": [x.as_dict() for x in messages(brain, who)] if who else [],
+        "rounds": rounds.waiting(brain, who),
         "overdue": [d.as_dict() for d in due if d.when < today],
         "due_soon": [d.as_dict() for d in due if today <= d.when <= today + timedelta(days=DUE_SOON_DAYS)],
         "approvals": len(pending),
@@ -178,6 +160,12 @@ def text(b: dict[str, Any]) -> str:
         lines.append(f"Messages ({len(b['messages'])}):")
         lines += [f"  {_local(m['at'])}  from {m['from']}: {_oneline(m['text'])}  [{m['id']}]"
                   for m in b["messages"]]
+    if b["rounds"]:
+        lines.append(f"{'Rounds waiting for your update' if b['for'] else 'Open rounds'} ({len(b['rounds'])}):")
+        lines += [f"  {r['id']} until {r['closes']}" + (": send it with `brainforge note \"…\"` or tell your agent"
+                                                      if b["for"] else f", no update yet from {', '.join(r['missing'])}"
+                                                      if r["missing"] else ", everyone has sent one")
+                  for r in b["rounds"]]
     for key, head in (("overdue", "Overdue"), ("due_soon", f"Due within {DUE_SOON_DAYS} days")):
         if b[key]:
             lines.append(f"{head} ({len(b[key])}):")
@@ -244,4 +232,4 @@ def calendar(brain: Brain, who: TeamMember | None) -> str:
 
 def find(brain: Brain, name: str | None) -> TeamMember | None:
     """`--for NAME`, else the git identity's team member; None means everyone."""
-    return member(brain, name) if name else approval.me(brain)
+    return approval.member(brain, name) if name else approval.me(brain)
