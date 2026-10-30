@@ -18,9 +18,11 @@ description: Work with a BrainForge brain, a Git-native knowledge base in Open K
 | Check the brain | `brainforge brain validate` |
 | Approve my items | `brainforge pending --json`, then `brainforge approve <id>…` / `brainforge discard <id>…` (see Approvals) |
 | Who still has items to approve | `brainforge pending --team` |
-| What needs the user (messages, rounds waiting for their update, overdue and soon-due items, approvals) | `brainforge briefing` |
+| What needs the user (messages, rounds waiting for their update, proposals for leads, overdue and soon-due items, approvals) | `brainforge briefing` |
 | Send the user's update for a round | `brainforge note "<their update>"` |
 | Who has sent an update to the rounds | `brainforge rounds` |
+| What needs steering (overdue, at risk, slipping, gaps) | `brainforge signals` |
+| Proposals waiting for a lead; the lead's decision | `brainforge proposals list`, `brainforge proposals approve 1 3` / `discard 2` (`--edit "<own words>"` for one) |
 | Leave a message for a teammate | `brainforge message send <name> "<text>" [--about <item id>]` |
 | Dismiss the user's messages | `brainforge message dismiss <id>…` |
 | Deadlines into a calendar | Your own calendar tool if you have one (an all-day event with title, date and link); else `brainforge calendar -o deadlines.ics` |
@@ -33,7 +35,8 @@ Rules:
 - Report the command output faithfully, including failures.
 - If a session starts with a BrainForge briefing, tell the user about it in a few lines first.
 - Messages are readable by everyone with access to the brain repository: say so when you send one.
-- If the briefing lists a round waiting for the user's update, offer to take it: ask what changed on their items, what's next and what's blocked, show the update in their words, and send it with `brainforge note` once they confirm. Afterwards, offer to approve what the brain took from it (`brainforge pending`).
+- If the briefing lists a round waiting for the user's update, offer to take it: ask what changed on their items, what's next and what's blocked, and the questions the briefing lists about their items; show the update in their words, and send it with `brainforge note` once they confirm. Afterwards, offer to approve what the brain took from it (`brainforge pending`).
+- If the briefing lists proposals waiting for a lead and the user is one, show them (`brainforge proposals list`) with each `Why`, ask which to approve, change or discard, and run `brainforge proposals approve`/`discard` only with their explicit answer: approving sends messages and changes items in their name.
 
 ## Approvals
 

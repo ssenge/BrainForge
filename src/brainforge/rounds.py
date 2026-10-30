@@ -24,7 +24,7 @@ from typing import Any
 
 from cronsim import CronSim
 
-from brainforge import approval, briefing, okf, procedures
+from brainforge import approval, briefing, okf, procedures, signals
 from brainforge.brain import Brain, BrainError, TeamMember
 
 LABEL = "brainforge-round"
@@ -187,12 +187,16 @@ def waiting(brain: Brain, who: TeamMember | None, at: datetime | None = None) ->
     """Open rounds: for a person, those still waiting for their update; for everyone, all of them."""
     at = at or datetime.now(UTC)
     out = []
+    asks: list[dict[str, Any]] | None = None  # the questions about their items, computed once if needed
     for r in all_latest(brain, at):
         if not r.open_at(at):
             continue
         miss = missing(brain, r)
         if who is None or who in miss:
-            out.append({"id": r.id, "closes": _when(r.closes, r.tz), "page": r.page, "missing": [m.name for m in miss]})
+            if who and asks is None:
+                asks = [s.as_dict() for s in signals.compute(brain) if who in s.owners]
+            out.append({"id": r.id, "closes": _when(r.closes, r.tz), "page": r.page, "missing": [m.name for m in miss],
+                        **({"questions": asks} if who else {})})
     return out
 
 
@@ -221,25 +225,31 @@ def issue_body(brain: Brain, r: Round, repo_url: str | None, today: date | None 
 
     today = today or date.today()
     due = briefing.deadlines(brain)
+    found = signals.compute(brain, today)
     parts = [f"<!-- brainforge-round: {r.id} -->",
              f"**Round `{r.id}`**: updates for the `{r.proc.name}` report, until {_when(r.closes, r.tz)} "
              f"({r.proc.schedule.timezone if r.proc.schedule else 'UTC'}).", "",
-             "Reply here with your update, in your own words: what changed, what's next, what's blocked. BrainForge "
+             "Reply here with your update, in your own words: what changed, what's next, what's blocked, and the "
+             "answers to the questions under your name. BrainForge "
              "takes it into the brain and asks you to confirm what it understood. You can also send it with "
              "`brainforge note \"…\"`, through your agent, or as a file in `inbox/`. Everyone with access to this "
              "repository can read it. No update is fine too: the report says so.", "",
              f"Who has sent one: [round page]({link(r.page)})"]
     for m in r.members:
         parts += ["", f"@{m.github}" if m.github else f"{m.name} (no `github` login in brain.yaml)"]
-        mine = [d for d in due if m in d.owners]
+        asks = [s for s in found if m in s.owners]
+        mine = [d for d in due if m in d.owners and d.id not in {s.id for s in asks}]
+        parts += [f"- [{s.concept.title}]({link(brain.rel(s.concept.path))}) ({s.kind}): {s.question}" for s in asks]
         parts += [f"- [{d.concept.title}]({link(brain.rel(d.concept.path))}) ({d.concept.meta.get('type')}, due "
-                  f"{d.when}{', overdue' if d.when < today else ''})" for d in mine] or ["- no open items with a date"]
+                  f"{d.when})" for d in mine]
+        if not asks and not mine:
+            parts.append("- no open items with a date")
     return "\n".join(parts)
 
 
-def _gh(brain: Brain, *args: str) -> str:
+def gh(brain: Brain, *args: str) -> str:
     if not shutil.which("gh"):
-        raise BrainError("round issues need the GitHub CLI (gh)")
+        raise BrainError("GitHub issues need the GitHub CLI (gh)")
     proc = subprocess.run(["gh", *args], cwd=brain.root, capture_output=True, text=True)
     if proc.returncode:
         raise BrainError(f"gh {' '.join(args[:2])} failed: {proc.stderr.strip()}")
@@ -253,14 +263,14 @@ def sync_issues(brain: Brain, repo_url: str | None = None, at: datetime | None =
     rs = all_latest(brain, at)
     if not rs:
         return []
-    listed = json.loads(_gh(brain, "issue", "list", "--label", LABEL, "--state", "open", "--json", "number,body",
+    listed = json.loads(gh(brain, "issue", "list", "--label", LABEL, "--state", "open", "--json", "number,body",
                             "--limit", "200"))
     found = {m.group(1): i["number"] for i in listed if (m := MARKER_RE.search(i.get("body") or ""))}
     done = []
     for r in rs:
         if r.open_at(at) and r.id not in found:
-            _gh(brain, "label", "create", LABEL, "--color", "1D76DB", "--force")
-            _gh(brain, "issue", "create", "--title", issue_title(r), "--label", LABEL,
+            gh(brain, "label", "create", LABEL, "--color", "1D76DB", "--force")
+            gh(brain, "issue", "create", "--title", issue_title(r), "--label", LABEL,
                 "--body", issue_body(brain, r, repo_url))
             done.append(f"opened {r.id}")
     latest_ids = {r.id: r for r in rs}
@@ -274,6 +284,6 @@ def sync_issues(brain: Brain, repo_url: str | None = None, at: datetime | None =
         rel = brain.rel(report) if report else None
         text = (f"The round has closed. Report: [{rel}]({repo_url}/blob/HEAD/{rel})" if rel and repo_url else
                 f"The round has closed. Report: `{rel}`" if rel else "The round has closed without a report.")
-        _gh(brain, "issue", "close", str(number), "--comment", text)
+        gh(brain, "issue", "close", str(number), "--comment", text)
         done.append(f"closed {rid}")
     return done

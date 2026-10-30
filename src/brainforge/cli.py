@@ -26,9 +26,11 @@ from brainforge import (
     parsers,
     plugins,
     procedures,
+    proposals,
     query,
     rounds,
     schedule,
+    signals,
 )
 from brainforge import brain as brain_mod
 from brainforge.brain import Brain, BrainError
@@ -46,9 +48,12 @@ plugin_app = typer.Typer(no_args_is_help=True, help="Plugins: domain types, inst
 workspace_app = typer.Typer(no_args_is_help=True, help="Open the brain in Obsidian.")
 message_app = typer.Typer(no_args_is_help=True, help="Messages for team members. They are files in the brain "
                           "repository: everyone with access to it can read them.")
+proposals_app = typer.Typer(no_args_is_help=True, help="Proposals from a steering procedure: a lead approves, "
+                            "BrainForge carries them out.")
 for sub, name in [(brain_app, "brain"), (knowledge_app, "knowledge"), (inbox_app, "inbox"),
                   (procedures_app, "procedures"), (schedule_app, "schedule"), (ci_app, "ci"), (skills_app, "skills"),
-                  (workspace_app, "workspace"), (plugin_app, "plugin"), (message_app, "message")]:
+                  (workspace_app, "workspace"), (plugin_app, "plugin"), (message_app, "message"),
+                  (proposals_app, "proposals")]:
     app.add_typer(sub, name=name)
 
 STATE: dict[str, Any] = {"brain": None, "json": False}
@@ -534,6 +539,66 @@ def rounds_cmd() -> None:
     emit(data, "\n".join(lines) or "No rounds: add `round:` to a scheduled procedure (docs/procedures.md).")
 
 
+@app.command("signals")
+def signals_cmd(
+    for_: Annotated[str | None, typer.Option("--for", help="Only this team member's items.")] = None,
+) -> None:
+    """What needs steering, found by code: overdue, at risk (waits for something late), slipping, gaps."""
+    b = current()
+    who = approval.member(b, for_) if for_ else None
+    found = [s for s in signals.compute(b) if who is None or who in s.owners]
+    emit([s.as_dict() for s in found], "\n".join(s.line() for s in found) or "No signals.")
+
+
+@proposals_app.command("list")
+def proposals_list() -> None:
+    """Proposals waiting for a lead, from the latest report of each procedure that proposes."""
+    b = current()
+    _sync(b)
+    data = proposals.waiting(b)
+    lines = []
+    for w in data:
+        lines += [f"{w['report']} ({w['procedure']}):", *("  " + line for line in proposals.lines(
+            b, w["proposals"], lambda cid: f"knowledge/{cid}.md"))]
+    emit(data, "\n".join(lines) or "No proposals waiting.")
+
+
+ProcedureOpt = Annotated[str | None, typer.Option("--procedure", help="The procedure whose latest proposals to "
+                                                  "decide (needed when several procedures propose).")]
+
+
+def _proposals(verb: str, numbers: list[int], procedure: str | None, edit: str | None, push: bool) -> None:
+    b = current()
+    who = approval.me(b)
+    if who is None:
+        raise BrainError(f"your git identity ({gitops.user(b.root) or 'not set'}) is not on this brain's team")
+    result = proposals.decide(b, verb, numbers, who, target=procedure, edit=edit, push=wants_push(b, push))
+    emit(result, "\n".join(result["lines"]) + (f"\n[{result['commit'][:8]}]" if result["commit"] else ""))
+    raise typer.Exit(0 if not result["failed"] else 1 if result["failed"] == len(numbers) else 3)
+
+
+@proposals_app.command("approve")
+def proposals_approve(
+    numbers: Annotated[list[int], typer.Argument(help="Proposal numbers, e.g. 1 3.")],
+    procedure: ProcedureOpt = None,
+    edit: Annotated[str | None, typer.Option("--edit", help="Your own words for one proposal: the message text, "
+                                             "the new value, or the new item's title.")] = None,
+    push: PushOpt = False,
+) -> None:
+    """Carry out proposals, as you (leads only): messages are sent, fields set, items created."""
+    _proposals("approve", numbers, procedure, edit, push)
+
+
+@proposals_app.command("discard")
+def proposals_discard(
+    numbers: Annotated[list[int], typer.Argument(help="Proposal numbers.")],
+    procedure: ProcedureOpt = None,
+    push: PushOpt = False,
+) -> None:
+    """Drop proposals (leads only)."""
+    _proposals("discard", numbers, procedure, None, push)
+
+
 # --- scheduling & CI ---------------------------------------------------------------------------
 
 @schedule_app.command("tick")
@@ -571,7 +636,8 @@ def schedule_install(
         line = schedule.cron_line(b) if print_only else schedule.install_cron(b)
         emit({"cron": line}, line if print_only else f"Installed crontab entry:\n{line}")
     elif provider == "github-actions":
-        out = [schedule.write_github_procedures(b, package), schedule.write_github_rounds(b, package)]
+        out = [schedule.write_github_procedures(b, package), schedule.write_github_rounds(b, package),
+               schedule.write_github_steering(b, package)]
         rels = [b.rel(p) for p in out if p]
         emit({"workflows": rels}, f"Wrote {', '.join(rels)}; commit and push to activate.")
     else:
@@ -622,9 +688,51 @@ def ci_remind(
 
 
 @ci_app.command("decide")
-def ci_decide(author: Annotated[str, typer.Option(help="GitHub login of the person who commented.")]) -> None:
+def ci_decide(
+    author: Annotated[str, typer.Option(help="GitHub login of the person who commented.")],
+    proposals_of: Annotated[str | None, typer.Option("--proposals", help="The report of a proposals issue: its "
+                                                     "`approve 1 3` / `discard 2` lines decide on those.")] = None,
+) -> None:
     """Apply the `approve …` / `discard …` lines of a GitHub comment (stdin) as that team member, and push."""
-    _decide_comment(current(), author, sys.stdin.read())
+    if proposals_of:
+        _decide_proposals(current(), author, proposals_of, sys.stdin.read())
+    else:
+        _decide_comment(current(), author, sys.stdin.read())
+
+
+@ci_app.command("proposals")
+def ci_proposals() -> None:
+    """Open a GitHub issue for the leads when a report has proposals; close it once they are decided (needs gh)."""
+    b = current()
+    _sync(b)
+    done = proposals.sync_issues(b, _repo_url())
+    emit(done, "\n".join(done) or "No proposal issues to open or close.")
+
+
+def _decide_proposals(b: Brain, author: str, report: str, text: str) -> None:
+    commands = proposals.parse(text)
+    if not commands:
+        return
+    member = _github_member(b, author)
+    email = member.email or f"{member.github}@users.noreply.github.com"
+    lines, failed, total = [], 0, 0
+    for verb, numbers, edit in commands:
+        total += 1
+        try:
+            result = proposals.decide(b, verb, numbers, member, target=report, edit=edit,
+                                      author=f"{member.name} <{email}>", push=True)
+        except (BrainError, gitops.GitError) as exc:
+            failed += 1
+            lines.append(f"- `{verb} {' '.join(map(str, numbers))}` failed: {exc}")
+            continue
+        failed += bool(result["failed"])
+        lines += [f"- {line}" + (f" ({result['commit'][:7]})" if result["commit"] else "") for line in result["lines"]]
+        for s in result["sent"]:  # the mention is what notifies them on GitHub
+            to = approval.member(b, s["to"])
+            lines.append(f"  - to {'@' + to.github if to.github else to.name}: {s['text']}")
+    left = next((len(w["proposals"]) for w in proposals.waiting(b) if w["report"] == report), 0)
+    typer.echo("\n".join(lines) + (f"\n\n{left} proposal(s) still waiting." if left else "\n\nAll proposals decided."))
+    raise typer.Exit(0 if not failed else 1 if failed == total else 3)
 
 
 @ci_app.command("rounds")

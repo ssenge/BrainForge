@@ -111,5 +111,6 @@ def test_stdio_round_trip(brain, write_):
 
     tools, text = anyio.run(session)
     assert tools == {"list_brains", "search", "read", "briefing"} | (
-        {"pending", "approve", "discard", "send_message", "dismiss_messages", "add_note"} if write_ else set())
+        {"pending", "approve", "discard", "send_message", "dismiss_messages", "add_note", "proposals",
+         "decide_proposals"} if write_ else set())
     assert "2027-01-15" in text

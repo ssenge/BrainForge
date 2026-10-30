@@ -129,6 +129,16 @@ def write_github_rounds(brain: Brain, package: str = "brainforge") -> Path | Non
     return out
 
 
+def write_github_steering(brain: Brain, package: str = "brainforge") -> Path | None:
+    """Proposal issues for the leads and their replies; only for brains with a procedure that proposes."""
+    if not any(p.proposes for p in procedures.load_all(brain)[0]):
+        return None
+    out = brain.root / ".github" / "workflows" / "brainforge-steering.yml"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(_workflow("steering.yml", brain, package), encoding="utf-8")
+    return out
+
+
 def write_github_ingest(brain: Brain, package: str = "brainforge") -> Path:
     out = brain.root / ".github" / "workflows" / "brainforge-ingest.yml"
     out.parent.mkdir(parents=True, exist_ok=True)

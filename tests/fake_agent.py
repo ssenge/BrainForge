@@ -119,7 +119,8 @@ def report() -> None:
     if mode == "leak":  # cites a concept it cannot see in its working copy
         links += f"\n- [secret]({prefix}/topics/secret.md)"
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(f"# Report\n\nPrevious: {previous}\n\n## Changed\n\n{changed}\n## Knowledge\n\n{links}\n")
+    proposals = f"\n```proposals\n{os.environ.get('FAKE_PROPOSALS', '[]')}\n```\n" if "# Proposals" in prompt else ""
+    target.write_text(f"# Report\n\nPrevious: {previous}\n\n## Changed\n\n{changed}\n## Knowledge\n\n{links}\n{proposals}")
     if mode == "stray":
         Path("knowledge/stray.md").write_text("---\ntype: Topic\n---\nx\n")
 

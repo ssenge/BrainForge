@@ -20,7 +20,7 @@ def pm(brain):
 def test_add_list_and_init(brain, tmp_path, run_cli):
     assert json.loads(run_cli("--brain", brain.root, "--json", "plugin", "list")[1])[0]["status"] == "available"
     code, out, _ = run_cli("--brain", brain.root, "plugin", "add", "pm")
-    assert code == 0 and "types: Milestone, Decision, Action Item" in out and "procedures: management-status, operational-status, status-report" in out
+    assert code == 0 and "types: Milestone, Decision, Action Item" in out and "procedures: management-status, operational-status, status-report, steering" in out
     assert json.loads(run_cli("--brain", brain.root, "--json", "plugin", "list")[1])[0]["status"] == "installed"
 
     code, out, _ = run_cli("init", tmp_path / "proj", "--plugin", "pm")
@@ -61,7 +61,8 @@ def test_layers_and_procedures(pm):
     assert [layer.label for layer in instruction_layers(pm, "query")][2] == "Plugin pm (plugins/pm/instructions/query.md)"
 
     procs, issues = procedures.load_all(pm)
-    assert issues == [] and {p.name for p in procs} == {"weekly-report", "status-report", "operational-status", "management-status"}
+    assert issues == [] and {p.name for p in procs} == {"weekly-report", "status-report", "operational-status",
+                                                          "management-status", "steering"}
     write(pm.procedures / "status-report.md", "---\nname: status-report\n---\nMine.\n")  # the brain's own wins
     assert next(p for p in procedures.load_all(pm)[0] if p.name == "status-report").path.parent == pm.procedures
 

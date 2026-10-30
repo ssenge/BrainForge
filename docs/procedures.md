@@ -22,6 +22,7 @@ schedule:                        # optional
 round:                           # optional, needs a schedule: see Rounds below
   opens: "0 8 * * 1"             # cron, in the schedule's timezone
   from: [Alice Smith, Bob]       # default: the whole team
+proposes: false                  # optional: end with proposals a lead approves, see Steering below
 ---
 
 # Weekly Customer Report
@@ -94,6 +95,44 @@ A round replaces a status meeting. Instead of dialling in at the same time, the 
 brainforge rounds        # the latest round of each procedure: open or closed, who has sent an update, who hasn't
 brainforge briefing      # lists open rounds still waiting for your update
 ```
+
+## Steering: signals and proposals
+
+Reports tell people where things stand; steering acts on it. Code finds what needs a person, an agent proposes what to do, a lead decides, and BrainForge carries it out.
+
+**Signals** are found by code in the brain and its git history, with no agent (`brainforge signals`):
+
+| Signal | When |
+|---|---|
+| overdue | past its deadline and not done (a plugin type with `deadline`) |
+| at risk | it waits for an item (the type's `waits_for` field, e.g. `depends_on: [actions/test-plan]`) that is overdue, due after it, without a date, or at risk itself |
+| slipping | its date moved later at least twice, or by 14 days or more; the first date comes from git history or the type's `baseline` field |
+| gap | an open item without an expected field, such as an owner or a date |
+
+Each signal carries a question for the item's owners. Round issues list them under each person, and the briefing shows them with an open round, so updates answer what the project needs to know ("It was due 28 Oct. Is it done, or what is the new date?").
+
+**Proposals.** A procedure with `proposes: true` gets the signals in its prompt and ends its report with up to seven proposals, each one of a closed set:
+
+| Proposal | What approving does |
+|---|---|
+| `message` | Leaves a message for a team member, in the approving lead's name: a question, a chase, an escalation to a lead. Nobody outside the team: what the client should hear is a draft in the report. |
+| `set` | Sets one field of an item, e.g. a new date or owner, with a `# History` line. It stops if the field changed since the proposal. |
+| `create` | Creates an item of a plugin type, e.g. a risk or a decision that needs taking. |
+
+Code checks every proposal against the brain: team members, concept ids, the type's fields and values. One that fails is left out, with the reason in the report's `brainforge.rejected_proposals`. The report lists the rest, numbered, as they will be carried out, and records them in its frontmatter (`proposals`, each with its `state`).
+
+Nothing happens until a lead approves (`lead: true` in [brain.yaml](brain-manifest.md)); any one lead can. Only the latest report of a procedure can be decided: an older one saw an older brain.
+
+```bash
+brainforge signals [--for Bob]                    # what needs steering
+brainforge run steering                           # the pm plugin's steering procedure
+brainforge proposals list                         # what waits for a lead
+brainforge proposals approve 1 3                  # carry them out, as you; a commit by you
+brainforge proposals approve 2 --edit "2026-11-26"  # your own words: message text, new value or title
+brainforge proposals discard 4
+```
+
+Leads also decide in their agent (Claude Desktop: `proposals` and `decide_proposals` of `brainforge mcp --write`) and on GitHub ([automation.md](automation.md#proposals-on-github)). A procedure that proposes can't have an `audience`: proposals are for the leads.
 
 ## Rules for runs and output
 

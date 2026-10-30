@@ -13,10 +13,11 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from cronsim import CronSim, CronSimError
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-from brainforge import agents, approval, gitops, ingest, okf, plugins, rounds
+from brainforge import agents, approval, gitops, ingest, okf, plugins, proposals, rounds, signals
 from brainforge.brain import AgentConfig, Brain, BrainError, Layer, blob_hash, instruction_layers, render_layers
 
 FORMATS = {"docx": ".docx", "pptx": ".pptx", "html": ".html", "pdf": ".pdf"}
+NO_LEAD = "proposals need a lead to decide on them: set `lead: true` on a team member in brain.yaml"
 
 
 class ProcedureError(Exception):
@@ -90,6 +91,7 @@ class Procedure(BaseModel):
     output: Output = Field(default_factory=Output)
     schedule: Schedule | None = None
     round: Round | None = None
+    proposes: bool = False  # the report ends with proposals a lead approves (proposals.py), from the signals
     path: Path = Field(exclude=True)
     body: str = Field("", exclude=True)
 
@@ -138,6 +140,10 @@ def load_all(brain: Brain) -> tuple[list[Procedure], list[okf.Issue]]:
             issues.append(okf.Issue("error", brain.rel(p.path), f"audience '{p.audience}' is not in brain.yaml audiences"))
         if p.round and not p.schedule:
             issues.append(okf.Issue("error", brain.rel(p.path), "a round needs a schedule: its report closes the round"))
+        if p.proposes and p.schedule and not any(m.lead for m in brain.manifest.team):  # unscheduled: run() says so
+            issues.append(okf.Issue("error", brain.rel(p.path), NO_LEAD))
+        if p.proposes and p.audience:
+            issues.append(okf.Issue("error", brain.rel(p.path), "proposals are for the leads: drop `audience`"))
         for name in p.round.members if p.round else []:
             try:
                 approval.member(brain, name)
@@ -221,6 +227,8 @@ def run(brain: Brain, proc: Procedure, cfg: AgentConfig, *, instruction: str | N
     date = now.astimezone(proc.tz()).date().isoformat()
     report_rel = f"{proc.directory}/{proc.output.filename.format(date=date, name=proc.name)}.md"
     report = root / report_rel
+    if proc.proposes and not any(m.lead for m in brain.manifest.team):
+        raise ProcedureError(NO_LEAD)
     if report.exists() and not force:
         raise ProcedureError(f"{report_rel} already exists; use --force to regenerate it")
     if proc.output.format != "markdown" and not shutil.which("pandoc"):
@@ -251,6 +259,10 @@ def run(brain: Brain, proc: Procedure, cfg: AgentConfig, *, instruction: str | N
     r = rounds.latest(brain, proc, now) if proc.round else None
     ups, missing = (rounds.updates(brain, r), rounds.missing(brain, r)) if r else ([], [])
     round_text = rounds.prompt(r, ups, missing, paths=not proc.audience) if r else ""
+    if proc.proposes:
+        round_text += signals.prompt(signals.compute(brain)) + proposals.prompt(brain)
+    props: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
 
     with gitops.lock(root):
         try:
@@ -273,6 +285,9 @@ def run(brain: Brain, proc: Procedure, cfg: AgentConfig, *, instruction: str | N
             if not report.is_file() or not report.read_text(encoding="utf-8").strip():
                 raise ProcedureError(f"agent did not write {report_rel}")
             _, body = okf.split_frontmatter(report.read_text(encoding="utf-8"))
+            if proc.proposes:  # code checks them, and lists them as they will be carried out
+                body, props, rejected = proposals.extract(brain, body)
+                body = proposals.with_block(brain, report, body, props)
             concept = okf.Concept(report, {}, body)
             bundle = brain.knowledge.resolve()
             cited = sorted({t for t in okf.links(concept, brain.knowledge) if t.is_relative_to(bundle) and t.suffix == ".md"})
@@ -288,6 +303,7 @@ def run(brain: Brain, proc: Procedure, cfg: AgentConfig, *, instruction: str | N
                 **({"audience": proc.audience} if proc.audience else {}),
                 **({"round": {"id": r.id, "updates": [u.rel for u in ups], "missing": [m.name for m in missing]}}
                    if r else {}),
+                **({"proposals": props} if proc.proposes else {}),
                 "generated": {"by": agents.actor(cfg), "at": okf.now_iso(now)},
                 "sources": sources,
                 "brainforge": {
@@ -298,6 +314,7 @@ def run(brain: Brain, proc: Procedure, cfg: AgentConfig, *, instruction: str | N
                     "broken_citations": broken,
                     "unapproved": unapproved,
                     "expired": expired,
+                    **({"rejected_proposals": rejected} if rejected else {}),
                 },
             }
             report.write_text(okf.render(meta, body), encoding="utf-8")
@@ -314,7 +331,7 @@ def run(brain: Brain, proc: Procedure, cfg: AgentConfig, *, instruction: str | N
             raise
     return {"procedure": proc.name, "report": report_rel, "outputs": outputs, "commit": sha,
             "cited": len(sources), "broken_citations": broken, "previous": brain.rel(previous) if previous else None,
-            "unapproved": unapproved, "expired": expired}
+            "unapproved": unapproved, "expired": expired, "proposals": len(props), "rejected_proposals": len(rejected)}
 
 
 def waiting_note(result: dict) -> str:

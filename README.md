@@ -30,6 +30,7 @@ BrainForge turns documents into a structured, versioned knowledge base, called a
 | **Secure by design** | Documents are treated as untrusted data, which defends against prompt injection. Agents get least-privilege tools (files only, no shell, no network) and run isolated from personal agent configs. An `allowed` list restricts which providers see the data. BrainForge never force-pushes. |
 | **Human in the loop, decentralized** | Everything the agent extracts arrives as *pending*. Each team member approves or discards their own items, routed by owner, from their own machine; a scanner shows who still has to act before a report. Every decision is a commit by the person who made it. |
 | **Asynchronous status meetings** | A round collects updates instead of a meeting: people send a note, a file or a reply on the round's GitHub issue while it is open, each confirms what the brain took from theirs, and the report closes the round. Several rounds can run at once. See [Rounds](#rounds-asynchronous-status-meetings). |
+| **Active steering** | Code finds what needs a person (overdue, at risk through a late dependency, slipping again and again, no owner or date) from the brain and its git history. A steering report proposes what to do: ask or chase someone, set a new date or owner, raise a risk or a decision. A lead approves with one line, and BrainForge carries it out. See [Steering](#steering-signals-and-proposals). |
 | **Audiences** | Each brain defines its own audiences, such as `client` / `internal`. A report for an audience sees only approved knowledge meant for it, enforced by code rather than by prompt. |
 | **Plugins** | The core is domain-neutral. Plugins add types with checked fields, instructions, reports and scripts for a domain. The bundled `pm` plugin covers project management: milestones, decisions, actions and a RAID log. See [docs/plugins.md](docs/plugins.md). |
 | **Agent skills and MCP** | One command installs a Claude Code or Codex skill, and `brainforge mcp` serves brains to Claude Desktop or any MCP client, read-only unless you let it record your approvals. See [Ask your brain](#ask-your-brain-from-claude-desktop-or-any-agent). |
@@ -264,10 +265,11 @@ For a status question, Claude reads the latest weekly report plus the milestone,
 | `pending` | Your pending items (`scope: all` for everyone's). Each has a `ref` (`id@version`), a link, and for a changed item the diff against the approved version. |
 | `approve`, `discard` | Records a decision as your git identity (`git config user.email` in the clone), commits, and pushes when the brain has a remote. Only `ref` values from `pending` are accepted, so a decision on an item that changed since Claude showed it stops. |
 | `send_message`, `dismiss_messages` | Leaves a message for a teammate when you ask; removes your own messages once you're done with them. |
+| `proposals`, `decide_proposals` | For leads: the proposals waiting, and your decision on them, carried out in your name. |
 | `add_note` | Sends your note to the brain, such as your update for a round, after you confirmed its text: a file in `inbox/`, committed as you and pushed, which the inbox workflow ingests. |
 
 Options:
-- `--write` adds the approval, message and note tools; without it, the server can't change anything.
+- `--write` adds the approval, message, note and proposal tools; without it, the server can't change anything.
 - `--no-pull` disables the automatic sync.
 - Without arguments, the server serves the brain in the current directory.
 - Pulling a private repository uses your normal git credentials (keychain or SSH agent).
@@ -451,6 +453,25 @@ round:
 
 Details: [docs/procedures.md](docs/procedures.md#rounds-asynchronous-status-meetings), [docs/automation.md](docs/automation.md#rounds-on-github).
 
+## Steering: signals and proposals
+
+Reports say where a project stands. Steering acts on it: code finds what needs a person, an agent proposes what to do, a lead decides, and BrainForge does it.
+
+- **Signals**, found by code in the brain and its git history (`brainforge signals`): an item is *overdue*; *at risk*, because something it waits for (`depends_on`) is late, due after it, undated or at risk itself; *slipping*, because its date moved later twice or by two weeks; or it has a *gap*, such as no owner or no date.
+- **Questions in the round.** Each round issue, and the briefing during a round, asks each person about their items: "It was due 28 Oct. Is it done, or what is the new date?" Updates answer what the project needs to know.
+- **Proposals.** The pm plugin's `steering` procedure reads the signals and the updates and proposes up to seven interventions, each one of three kinds: a **message** to a team member (ask, chase, escalate to a lead), **set** a field (a new date or owner), or **create** an item (a risk, a decision that needs taking). Code checks each against the brain before listing it.
+- **A lead decides**, with `lead: true` in `brain.yaml`. Any one lead can, so nothing waits for a single person: `brainforge proposals approve 1 3`, `approve 2 --edit "2026-11-26"` in their own words, or `discard 4`. Also from Claude Desktop, or with one reply on the proposals issue on GitHub. Each decision is a commit by that lead.
+
+```
+1. Message to Bob Lee about Test plan: "The test plan is 6 days late and holds up integration testing. What's the new date?"
+   Why: Overdue since 28 Oct; integration testing waits for it.
+2. Set `date` of Integration testing: 2026-11-12 → 2026-11-19
+   Why: Bob's update says the vendor API comes a week late.
+3. New Decision "Cut scope or move go-live?" (decide_by: 2026-11-06)
+```
+
+Nobody outside the team is messaged: what the client should hear is a draft in the report. Details: [docs/procedures.md](docs/procedures.md#steering-signals-and-proposals), [docs/automation.md](docs/automation.md#proposals-on-github), [docs/security.md](docs/security.md#steering).
+
 ## Agents and authentication
 
 BrainForge never touches credentials; it runs the agent CLI, which logs itself in.
@@ -484,8 +505,10 @@ With `adapter: command`, any program works. It receives the prompt on stdin, run
 | `ingest FILE…` | Ingest documents (`--instruction`, `--dry-run`, `--force`, `--no-commit`, `--push`, `--allow-secrets`) |
 | `inbox process` | Ingest everything in `inbox/` |
 | `note TEXT` | Ingest a typed note (a correction, a fact from a call) as a source by you; `-` reads stdin |
-| `briefing` | What needs you: messages, rounds waiting for your update, overdue and soon-due items, approvals (`--for NAME`; `--hook` for an agent's session start) |
+| `briefing` | What needs you: messages, rounds waiting for your update (with questions about your items), proposals for leads, overdue and soon-due items, approvals (`--for NAME`; `--hook` for an agent's session start) |
 | `rounds` | The latest round of each procedure: open or closed, who has sent an update, who hasn't |
+| `signals` | What needs steering, found by code: overdue, at risk, slipping, gaps (`--for NAME`) |
+| `proposals list`, `proposals approve N…`, `proposals discard N…` | Proposals of a steering report; leads approve (`--edit TEXT`, `--procedure NAME`, `--push`) or discard |
 | `message send TO TEXT`, `message dismiss ID…` | Messages for team members, stored in the brain repository and readable by everyone with access (`--about ITEM`, `--all`, `--push`) |
 | `calendar` | Open deadlines as an iCalendar file (`--all`, `--for NAME`, `-o FILE`) |
 | `knowledge search [TEXT]` | Deterministic search (`--type`, `--tag`, `--status`, `--approval`, `--links-to`, `--linked-from`) |
@@ -500,6 +523,7 @@ With `adapter: command`, any program works. It receives the prompt on stdin, run
 | `ci install` | GitHub Actions workflows for inbox ingestion and, with `github` logins in the team, approvals (`--remind CRON`) |
 | `ci remind [--notify]`, `ci decide --author LOGIN` | Used by the approvals workflow: the reminder text, with `--notify` first the messages about newly overdue items; apply a comment's decisions |
 | `ci rounds`, `ci reply --author LOGIN --round ID` | Used by the rounds workflow: open and close round issues; take a reply in as the person's update |
+| `ci proposals`, `ci decide --author LOGIN --proposals REPORT` | Used by the steering workflow: open and close proposal issues; apply a lead's reply |
 | `plugin add NAME\|PATH\|GIT-URL`, `plugin list`, `plugin run PLUGIN SCRIPT [ARGS…]` | Add a plugin to the brain (`init --plugin NAME` does it at creation), list plugins, run a plugin script |
 | `skills install claude\|codex [--user]` | Agent skill that wraps the CLI |
 | `workspace open` | Open the brain as an Obsidian vault |

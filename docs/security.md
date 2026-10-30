@@ -39,6 +39,13 @@ BrainForge processes confidential documents with LLM agents. This document descr
 - Messages never reach an ingestion or report agent: agents see `knowledge/` only, and audience views copy nothing else.
 - A brain's `.claude/settings.json` runs `brainforge briefing --hook` when Claude Code starts a session in the brain folder. Claude Code asks you to trust a folder before it runs its hooks. Agent runs by BrainForge don't load it: they run with `--bare` or `--setting-sources ""`.
 
+## Steering
+
+- Proposals come from an agent that read untrusted documents, so they are only proposals: nothing happens until a lead approves, in their own name, as a commit by them.
+- The agent chooses from three actions, and code checks each one before it is listed and again before it is carried out: a message to a team member (never anyone else, and scanned for credentials), one declared field of an existing item set to an allowed value, or a new item of a plugin type. No commands, no files, no deletions, nothing outside the brain. A `set` stops if the field changed since the proposal, and only the latest report can be decided.
+- A field a lead sets on an item still awaiting approval stays pending: the lead's decision doesn't approve content nobody looked at.
+- On GitHub, a comment decides only when its author has write access *and* is a lead with that `github` login in `brain.yaml`.
+
 ## Rounds
 
 - A round update is a document like any other: untrusted data for the agent, scanned for credentials, archived in git, and readable by everyone with access to the repository.

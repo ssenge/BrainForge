@@ -38,7 +38,7 @@ class FieldDef(BaseModel):
     model_config = ConfigDict(extra="forbid")
     description: str = ""
     values: list[str] = []  # allowed values, compared case-insensitively
-    format: Literal["date"] | None = None  # YYYY-MM-DD
+    format: Literal["date", "ids"] | None = None  # YYYY-MM-DD, or a list of concept ids (milestones/go-live)
     expected: bool = False  # missing → a gap that approvers see
 
 
@@ -51,11 +51,15 @@ class TypeDef(BaseModel):
     stale_after_days: int | None = Field(default=None, gt=0)  # review period: OKF `stale_after` on every change
     deadline: str | None = None  # a date field: the item is overdue once it passes...
     done: dict[str, list[str]] = {}  # ...unless one of these fields has one of these values, e.g. {state: [done]}
+    baseline: str | None = None  # a date field with the first planned date: how far the deadline slipped
+    waits_for: str | None = None  # an ids field: the items this one waits for; a late one puts it at risk
 
     @model_validator(mode="after")
-    def _deadline_is_a_date_field(self) -> TypeDef:
-        if self.deadline and (self.deadline not in self.fields or self.fields[self.deadline].format != "date"):
-            raise ValueError(f"deadline '{self.deadline}' must name a field with format: date")
+    def _fields_exist(self) -> TypeDef:
+        for key, fmt in (("deadline", "date"), ("baseline", "date"), ("waits_for", "ids")):
+            name = getattr(self, key)
+            if name and (name not in self.fields or self.fields[name].format != fmt):
+                raise ValueError(f"{key} '{name}' must name a field with format: {fmt}")
         return self
 
 
@@ -175,16 +179,47 @@ def renew(brain: Brain, c: okf.Concept, known: dict[str, TypeDef] | None = None)
     return True
 
 
+def finished(c: okf.Concept, t: TypeDef | None) -> bool:
+    """One of the type's `done` values is set."""
+    return t is not None and any(str(c.meta.get(k, "")).lower() in [v.lower() for v in vs] for k, vs in t.done.items())
+
+
+def a_date(value: object) -> date | None:
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except ValueError:
+        return None
+
+
 def deadline(brain: Brain, c: okf.Concept, known: dict[str, TypeDef] | None = None) -> date | None:
     """The date an unfinished item is due, or None: no deadline, no date yet, or done."""
     t = (types(brain) if known is None else known).get(str(c.meta.get("type")))
-    if not (t and t.deadline) or any(str(c.meta.get(k, "")).lower() in [v.lower() for v in vs]
-                                     for k, vs in t.done.items()):
+    if not (t and t.deadline) or finished(c, t):
         return None
-    try:
-        return date.fromisoformat(str(c.meta.get(t.deadline))[:10])
-    except ValueError:
-        return None  # missing or not a date: a gap or a check error
+    return a_date(c.meta.get(t.deadline))  # missing or not a date: a gap or a check error
+
+
+def ids(value: object) -> list[str]:
+    """Concept ids as written, normalized: `../milestones/go-live.md` and `knowledge/milestones/go-live` are
+    `milestones/go-live`."""
+    out = []
+    for v in value if isinstance(value, list) else [value] if value not in (None, "") else []:
+        s = str(v).strip().split("#")[0].removesuffix(".md")
+        while s.startswith(("./", "../")):
+            s = s.split("/", 1)[1]
+        out.append(s.removeprefix("knowledge/"))
+    return out
+
+
+def field_error(name: str, f: FieldDef, value: object) -> str | None:
+    if f.values and str(value).lower() not in [v.lower() for v in f.values]:
+        return f"{name} must be one of {', '.join(f.values)}, not '{value}'"
+    if f.format == "date" and not (isinstance(value, date) or DATE_RE.match(str(value))):
+        return f"{name} must be a date (YYYY-MM-DD), not '{value}'"
+    if f.format == "ids" and not (isinstance(value, str) or isinstance(value, list)
+                                  and all(isinstance(v, str) for v in value)):
+        return f"{name} must be a list of concept ids such as milestones/go-live, not '{value}'"
+    return None
 
 
 def check(brain: Brain, path: Path, known: dict[str, TypeDef] | None = None) -> list[okf.Issue]:
@@ -202,12 +237,12 @@ def check(brain: Brain, path: Path, known: dict[str, TypeDef] | None = None) -> 
         issues.append(okf.Issue("warning", rel, f"type '{t.type}' belongs in {t.group}/"))
     for name, f in t.fields.items():
         value = c.meta.get(name)
-        if value in (None, ""):
+        if value in (None, "", []):
             continue
-        if f.values and str(value).lower() not in [v.lower() for v in f.values]:
-            issues.append(okf.Issue("error", rel, f"{name} must be one of {', '.join(f.values)}, not '{value}'"))
-        if f.format == "date" and not (isinstance(value, date) or DATE_RE.match(str(value))):
-            issues.append(okf.Issue("error", rel, f"{name} must be a date (YYYY-MM-DD), not '{value}'"))
+        if error := field_error(name, f, value):
+            issues.append(okf.Issue("error", rel, error))
+        elif f.format == "ids" and (gone := [i for i in ids(value) if not (brain.knowledge / f"{i}.md").is_file()]):
+            issues.append(okf.Issue("warning", rel, f"{name}: no such concept: {', '.join(gone)}"))
     return issues
 
 
@@ -236,9 +271,16 @@ def _types_text(plugin: Plugin) -> str:
             what = [f.description] if f.description else []
             what += [f"one of {', '.join(f.values)}"] if f.values else []
             what += ["a date, YYYY-MM-DD"] if f.format == "date" else []
+            what += ["a list of concept ids, e.g. [dependencies/vendor-api]"] if f.format == "ids" else []
             lines.append(f"  - `{name}`" + (f": {'; '.join(what)}" if what else ""))
         if t.deadline:
             done = " or ".join(f"`{k}: {v}`" for k, vs in t.done.items() for v in vs)
             lines.append(f"  - `{t.deadline}` is the deadline. When a document reports the item finished, set "
                          f"{done or 'the matching value'} and cite that document; \"in progress\" is not finished.")
+        if t.baseline:
+            lines.append(f"  - `{t.baseline}` is the first planned date: set it once, and keep it when "
+                         f"`{t.deadline or 'the date'}` moves.")
+        if t.waits_for:
+            lines.append(f"  - `{t.waits_for}` lists the items this one waits for (\"depends on\", \"needs … "
+                         "first\", \"blocked by\"), by concept id; create the item it waits for if it doesn't exist.")
     return "\n".join(lines) + "\n"

@@ -14,7 +14,7 @@ from typing import Any
 from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 
-from brainforge import __version__, approval, briefing, gitops, ingest, okf, procedures
+from brainforge import __version__, approval, briefing, gitops, ingest, okf, procedures, proposals
 from brainforge.brain import Brain, data_text, instruction_layers
 
 PULL_EVERY = 300  # seconds between `git pull` per brain
@@ -32,7 +32,7 @@ Search results carry a `url` that opens the concept in Obsidian: cite concepts a
 `approval: pending` means no person has approved the concept yet: say so when an answer rests on it.
 
 At the start of a conversation, call `briefing` once. If it lists messages, rounds waiting for the user's update,
-overdue items or items due soon, tell the user in a few lines, with links, before you answer their first request. Messages are files in the brain
+proposals waiting for a lead, overdue items or items due soon, tell the user in a few lines, with links, before you answer their first request. Messages are files in the brain
 repository: everyone with access to it can read them. To put a deadline in the user's calendar, use your own
 calendar tool if you have one (an all-day event with the title, date and link); else suggest `brainforge calendar`.
 
@@ -52,7 +52,11 @@ Writing is enabled: you record the user's own decisions on knowledge awaiting ap
 5. `send_message` only when the user asks you to, with their words; say that everyone with access to the brain
    can read it. `dismiss_messages` once the user is done with a message from the briefing.
 6. A round waiting for the user's update: offer to take it. Ask what changed on their items, what's next and
-   what's blocked, show the update in their words, and only after they confirm, call `add_note`.
+   what's blocked, and the round's `questions` about their items; show the update in their words, and only
+   after they confirm, call `add_note`.
+7. Proposals waiting for a lead (the briefing says so only to leads): show them with `proposals` as a numbered
+   list with each `why`, ask which to approve, change or discard, and only then call `decide_proposals`.
+   Approving carries a proposal out in the user's name: a message is sent, a field set, an item created.
 
 """
 
@@ -211,6 +215,15 @@ def add_note(brains: Brains, text: str, brain: str | None = None) -> dict[str, A
             "round the user takes part in, it is their update, and its changes wait for their approval."}
 
 
+def decide_proposals(brains: Brains, verb: str, numbers: list[int], procedure: str | None = None,
+                     edit: str | None = None, brain: str | None = None) -> dict[str, Any]:
+    """Approve or discard proposals as the local git user, who must be a lead; pushed when the brain has a remote."""
+    b = brains.get(brain)
+    if (who := approval.me(b)) is None:
+        raise ValueError(f"your git identity ({gitops.user(b.root) or 'not set'}) is not on this brain's team")
+    return proposals.decide(b, verb, numbers, who, target=procedure, edit=edit, push=gitops.has_upstream(b.root))
+
+
 def build(roots: list[Brain], pull: bool = True, write: bool = False) -> MCPServer:
     brains = Brains(roots, pull)
     guide = GUIDE + (WRITE_GUIDE if write else "")
@@ -273,6 +286,20 @@ def build(roots: list[Brain], pull: bool = True, write: bool = False) -> MCPServ
         """Send the user's note to the brain, e.g. their update for a round or a correction, in their words.
         Only after the user confirmed the text. Readable by everyone with access to the brain."""
         return add_note(brains, text, brain)
+
+    @server.tool(name="proposals", annotations=READ_ONLY)
+    def proposals_tool(brain: str | None = None) -> list[dict[str, Any]]:
+        """Proposals waiting for a lead, per procedure that proposes: each with its number `n`, what it does
+        (`do`: message, set or create, and its details) and `why`."""
+        return proposals.waiting(brains.get(brain))
+
+    @server.tool(name="decide_proposals", annotations=DECIDE)
+    def decide_proposals_tool(verb: str, numbers: list[int], procedure: str | None = None, edit: str | None = None,
+                              brain: str | None = None) -> dict[str, Any]:
+        """Approve (carry out) or discard proposals, in the user's name; only leads can. Call only after the user
+        explicitly decided. `verb`: approve or discard. `edit`: the user's own words for one approved proposal
+        (message text, new value or title). `procedure`: needed when several procedures propose."""
+        return decide_proposals(brains, verb, numbers, procedure, edit, brain)
 
     @server.tool(name="dismiss_messages", annotations=UNDO)
     def dismiss_messages_tool(ids: list[str], brain: str | None = None) -> dict[str, Any]:

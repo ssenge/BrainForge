@@ -64,9 +64,15 @@ Run the command again after changing a schedule or a round. GitHub may delay sch
 ### Rounds on GitHub
 
 When a procedure has a [round](procedures.md#rounds-asynchronous-status-meetings), the same command also writes `.github/workflows/brainforge-rounds.yml`. It needs team members with a `github` login in `brain.yaml` and the agent secret of `brainforge-ingest`:
-- **Round issues** (after each run of `brainforge-procedures`, and manual dispatch): `brainforge ci rounds` opens an issue labelled `brainforge-round` for each round that opened. It @mentions the participants, lists each one's open items with a date, and links the round page. Once the round's report is written, it closes the issue with a link to the report. Open issues are the state, so running it again does nothing new.
+- **Round issues** (after each run of `brainforge-procedures`, and manual dispatch): `brainforge ci rounds` opens an issue labelled `brainforge-round` for each round that opened. It @mentions the participants, asks each one the questions from the signals about their items (overdue, at risk, slipping, missing owner or date), lists their other open items with a date, and links the round page. Once the round's report is written, it closes the issue with a link to the report. Open issues are the state, so running it again does nothing new.
 - **Replies** (`issue_comment` on a round issue): `brainforge ci reply --author <login> --round <id>` ingests the reply as that person's update for that round, pushes, and answers with what the brain took from it, as `approve …` lines for them. A reply with `approve …` / `discard …` lines decides instead, as in the approvals issue.
 - Only people with write access who are listed with their `github` login can send updates this way. Replies run without a `concurrency` group, since GitHub would cancel all but the newest waiting run; overlapping runs rebase or retry their push.
+
+### Proposals on GitHub
+
+When a procedure has `proposes: true` ([steering](procedures.md#steering-signals-and-proposals)), the same command also writes `.github/workflows/brainforge-steering.yml`. It needs no agent and no secrets, and leads with a `github` login in `brain.yaml`:
+- **Proposal issues** (after each run of `brainforge-procedures`): `brainforge ci proposals` opens an issue labelled `brainforge-steering` for a report with proposals waiting, @mentioning the leads and listing the proposals with links. It closes the issue once all are decided or a newer report replaced them.
+- **Replies** (`issue_comment` on a proposal issue): `brainforge ci decide --author <login> --proposals <report>` applies a lead's lines: `approve 1 3`, `discard 2`, or `approve 2: <own words>` to change the message text, the new value or the new item's title first. Each decision is a commit by that lead, pushed; the answer lists what was done and @mentions whoever got a message, which is what notifies them on GitHub. Only leads decide; anyone else's lines fail with a note.
 
 ### Local cron
 

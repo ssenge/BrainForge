@@ -1,5 +1,5 @@
 name: pm
-version: 3
+version: 4
 description: Project management - milestones, decisions, actions, and a RAID log (risks, assumptions, issues, dependencies).
 types:
   - type: Milestone
@@ -7,27 +7,35 @@ types:
     description: A planned point in the project, such as a go-live or the start of testing.
     deadline: date
     done: {state: [achieved, cancelled]}
+    baseline: baseline
+    waits_for: depends_on
     fields:
       owner: {description: "who is responsible, as written"}
       date: {description: "the current planned or actual date", format: date, expected: true}
       baseline: {description: "the first planned date, kept when the date moves", format: date}
       state: {values: [planned, achieved, missed, cancelled]}
+      depends_on: {description: "what has to be done first: actions, dependencies, decisions", format: ids}
   - type: Decision
     group: decisions
     description: Something that was decided or proposed for decision.
+    deadline: decide_by
+    done: {state: [confirmed, superseded]}
     fields:
       decided_by: {description: "who decided, as written", expected: true}
       decided_on: {format: date}
+      decide_by: {description: "when it has to be decided, while it is proposed", format: date}
       state: {values: [proposed, confirmed, superseded]}
   - type: Action Item
     group: actions
     description: A task someone committed to.
     deadline: due
     done: {state: [done, cancelled]}
+    waits_for: depends_on
     fields:
       owner: {description: "who does it, as written", expected: true}
       due: {format: date, expected: true}
       state: {values: [open, done, cancelled]}
+      depends_on: {description: "what has to be done first", format: ids}
   - type: Risk
     group: risks
     description: Something that may happen and would affect the project.

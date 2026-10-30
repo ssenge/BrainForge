@@ -1,4 +1,5 @@
-"""What needs a person: messages, open rounds, deadlines (overdue, due soon) and approvals, as one briefing.
+"""What needs a person: messages, open rounds, deadlines (overdue, due soon), approvals and, for leads, proposals,
+as one briefing.
 
 - Messages are files in the brain repository, `messages/<member>/<id>.md`, so teammates, CI and BrainForge can
   leave them and every clone sees them. Everyone with access to the repository can read them.
@@ -15,7 +16,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from brainforge import approval, gitops, ingest, okf, plugins, rounds
+from brainforge import approval, gitops, ingest, okf, plugins, proposals, rounds
 from brainforge.brain import Brain, BrainError, TeamMember, slugify
 
 DUE_SOON_DAYS = 3  # ponytail: fixed window; a brain.yaml setting if teams want another one
@@ -146,6 +147,8 @@ def briefing(brain: Brain, who: TeamMember | None, today: date | None = None) ->
         "date": today.isoformat(),
         "messages": [x.as_dict() for x in messages(brain, who)] if who else [],
         "rounds": rounds.waiting(brain, who),
+        "proposals": [{"procedure": w["procedure"], "report": w["report"], "waiting": len(w["proposals"])}
+                      for w in proposals.waiting(brain)] if who is None or who.lead else [],
         "overdue": [d.as_dict() for d in due if d.when < today],
         "due_soon": [d.as_dict() for d in due if today <= d.when <= today + timedelta(days=DUE_SOON_DAYS)],
         "approvals": len(pending),
@@ -166,6 +169,12 @@ def text(b: dict[str, Any]) -> str:
                                                       if b["for"] else f", no update yet from {', '.join(r['missing'])}"
                                                       if r["missing"] else ", everyone has sent one")
                   for r in b["rounds"]]
+        if asks := next((r["questions"] for r in b["rounds"] if r.get("questions")), []):
+            lines.append("  Questions for your update:")
+            lines += [f"    {q['id']}: {q['question']}" for q in asks]
+    if b["proposals"]:
+        lines.append(f"Proposals waiting for a lead ({sum(p['waiting'] for p in b['proposals'])}):")
+        lines += [f"  {p['report']}: {p['waiting']} (brainforge proposals list)" for p in b["proposals"]]
     for key, head in (("overdue", "Overdue"), ("due_soon", f"Due within {DUE_SOON_DAYS} days")):
         if b[key]:
             lines.append(f"{head} ({len(b[key])}):")

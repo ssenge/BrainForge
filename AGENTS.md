@@ -32,8 +32,10 @@ Run all three checks before you commit. They are all clean on `main`.
 | `src/brainforge/procedures.py` | Markdown procedures → reports (pandoc for DOCX/PPTX/HTML/PDF) |
 | `src/brainforge/schedule.py` | `schedule tick`, plus generators for cron entries and GitHub workflows |
 | `src/brainforge/rounds.py` | Rounds (asynchronous status meetings): windows from procedure crons, updates per round, the round page, round issues via `gh` |
+| `src/brainforge/signals.py` | Signals found by code: overdue, at risk (via `waits_for`), slipping (git history of the deadline), gaps |
+| `src/brainforge/proposals.py` | Proposals of a `proposes: true` procedure: the closed set (message, set, create), checks, the lead's decision carried out, proposal issues via `gh` |
 | `src/brainforge/briefing.py` | Deadlines from plugin types, messages (`messages/<member>/`), overdue notices, the briefing, the iCalendar export |
-| `src/brainforge/mcp_server.py` | MCP server (`list_brains`, `search`, `read`, `briefing`; with `--write` also `pending`, `approve`, `discard`, `send_message`, `dismiss_messages`, `add_note`) for Claude Desktop and others |
+| `src/brainforge/mcp_server.py` | MCP server (`list_brains`, `search`, `read`, `briefing`; with `--write` also `pending`, `approve`, `discard`, `send_message`, `dismiss_messages`, `add_note`, `proposals`, `decide_proposals`) for Claude Desktop and others |
 | `src/brainforge/plugins.py` | Plugins: load, add (copy into the brain), types → instruction layer and field checks, scripts |
 | `plugins/` | Bundled plugins, e.g. `plugins/pm` (project management). Shipped in the wheel as `brainforge/bundled_plugins` |
 | `src/brainforge/integrations.py` | Agent skill install, Obsidian vault config |
@@ -47,6 +49,7 @@ Run all three checks before you commit. They are all clean on `main`.
 - **One commit per document or report**, with `BrainForge-*` trailers. Commit only the paths the run touched. Never force-push. A rejected push rebases only when both sides changed different files; otherwise the run undoes its commits (`gitops.Stale`), so a merge never joins an approval with content nobody saw.
 - **Idempotency** comes from the SHA-256 of the document bytes. The ledger is the set of committed source concepts (`knowledge/sources/*.md`, `brainforge.sha256`). No other state store.
 - **Deterministic code checks every agent run.** After a run, `git status` must show changes only in `knowledge/` (for reports, only the report file), no deletions, valid OKF, every changed concept citing the new source, and old provenance kept. Keep LLM behavior out of the deterministic modules.
+- **Agents propose, leads decide.** A procedure's proposals are a closed set (message a team member, set a declared field, create a plugin-typed item), checked by code when listed and again when carried out. Never add an action that runs commands, deletes, or reaches outside the brain and its team.
 - **People approve, not agents.** After every agent run BrainForge sets `approval: pending` and restores `audience`; the agent's values never survive. Audience-restricted reports and queries run on `approval.view`, a copy holding only what that audience may see.
 - **Documents are untrusted data.** They go inside a `<document>` block, and `data/policy.md` is always the first, non-overridable instruction layer.
 - **BrainForge never handles credentials.** Agent CLIs log themselves in. Don't read, store, log or pass API keys.
@@ -58,7 +61,7 @@ Run all three checks before you commit. They are all clean on `main`.
 ## Conventions
 
 - **Don't overengineer.** Prefer git, the stdlib and existing dependencies over new mechanisms. Mark deliberate shortcuts with a `# ponytail:` comment that names the limit and the upgrade path.
-- **External tools run as subprocesses:** `git`, `claude`, `codex`, `pandoc`, `gh` (round issues in CI). No GitPython, no agent SDKs.
+- **External tools run as subprocesses:** `git`, `claude`, `codex`, `pandoc`, `gh` (round and proposal issues in CI). No GitPython, no agent SDKs.
 - **Typer 0.27 vendors click.** Use `typer.Exit`, `typer.Abort` and `typer.exceptions.TyperException`; never `import click`.
 - **CLI exit codes:** 0 ok, 1 failure, 2 usage or config error (`BrainError`), 3 partial failure.
 - **Command output goes through `emit()` in `cli.py`**, which honours the global `--json`.
