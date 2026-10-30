@@ -673,6 +673,7 @@ Further out:
 - [Plugins](docs/plugins.md), and the bundled [pm plugin](plugins/pm/README.md)
 - [Automation: GitHub Actions and cron](docs/automation.md)
 - [Security model](docs/security.md)
+- [Test plan](testplan/README.md): every feature, step by step, for a human tester
 
 ## Development
 

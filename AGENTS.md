@@ -43,6 +43,7 @@ Run all three checks before you commit. They are all clean on `main`.
 | `src/brainforge/data/` | All prompts and templates: `policy.md` (non-overridable), `ingestion.md`, `query.md`, `reporting.md`, `init/`, `workflows/`, `skills/` |
 | `tests/` | pytest; `fake_agent.py` is a deterministic stand-in for the agent CLI |
 | `docs/` | User docs: knowledge profile, manifest, procedures, automation, security |
+| `testplan/` | The manual test plan for human testers: `content.py` (the tests) → `gen.py` → `brainforge-test-plan.html`. Update it when a command, its output or a workflow changes |
 
 ## Invariants: don't break these
 
