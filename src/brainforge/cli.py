@@ -349,7 +349,7 @@ def _sync(b: Brain) -> None:
 @app.command("pending")
 def pending_cmd(
     team: Annotated[bool, typer.Option("--team", help="Per team member: who still has items to approve.")] = False,
-    for_: Annotated[str | None, typer.Option("--for", help="Another team member's items (name or email).")] = None,
+    for_: Annotated[str | None, typer.Option("--for", help="Another team member's items (name, alias, email or login).")] = None,
     all_: Annotated[bool, typer.Option("--all", help="Every pending item.")] = False,
     check: Annotated[bool, typer.Option("--check", help="Exit 1 if anything is pending.")] = False,
 ) -> None:
@@ -363,9 +363,7 @@ def pending_cmd(
     who = None
     if b.manifest.team and not all_:
         if for_:
-            who = next((m for m in b.manifest.team if for_.lower() in (m.name.lower(), (m.email or "").lower())), None)
-            if not who:
-                raise BrainError(f"no team member '{for_}' in brain.yaml")
+            who = approval.member(b, for_)
         elif not (who := approval.me(b)):
             raise BrainError(f"you ({gitops.user(b.root) or 'no git user'}) are not on the brain.yaml team; "
                              "use --all, --team or --for NAME")

@@ -77,6 +77,7 @@ def test_pending_approve_and_discard(team, tmp_path, run_cli):
     assert code == 1 and "2 item(s) await approval" in out
     assert "Bob Lee" in out and "milestones/go-live" in out and "Alice Smith" in out and "done" in out
     assert run_cli("--brain", team.root, "pending")[1].startswith("0 item(s) awaiting approval by Alice Smith")
+    assert run_cli("--brain", team.root, "pending", "--for", "ali")[1].startswith("0 item(s) awaiting approval by Alice")
     items = json.loads(run_cli("--brain", team.root, "--json", "pending", "--for", "Bob Lee")[1])
     assert [i["id"] for i in items] == ["milestones/go-live"] and items[0]["kind"] == "new"
     assert items[0]["audience"] == "internal" and items[0]["wider"] == ["client"]
