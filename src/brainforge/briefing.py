@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from brainforge import approval, gitops, ingest, okf, plugins, proposals, rounds
+from brainforge import approval, gitops, ingest, okf, plan, plugins, proposals, rounds
 from brainforge.brain import Brain, BrainError, TeamMember, slugify
 
 DUE_SOON_DAYS = 3  # ponytail: fixed window; a brain.yaml setting if teams want another one
@@ -146,6 +146,7 @@ def briefing(brain: Brain, who: TeamMember | None, today: date | None = None) ->
         "for": who.name if who else None,
         "date": today.isoformat(),
         "messages": [x.as_dict() for x in messages(brain, who)] if who else [],
+        "plan": plan.briefing(brain),
         "rounds": rounds.waiting(brain, who),
         "proposals": [{"procedure": w["procedure"], "report": w["report"], "waiting": len(w["proposals"])}
                       for w in proposals.waiting(brain)] if who is None or who.lead else [],
@@ -159,6 +160,9 @@ def briefing(brain: Brain, who: TeamMember | None, today: date | None = None) ->
 def text(b: dict[str, Any]) -> str:
     """The briefing as short plain text; empty when there is nothing to tell."""
     lines = []
+    if p := b.get("plan"):
+        steps = ", ".join(f"{s['title']} ({s['state']})" for s in p["open"]) or "none, ready for the next phase"
+        lines.append(f"Phase {p['phase']}" + (f" since {p['since']}" if p["since"] else "") + f". Open steps: {steps}.")
     if b["messages"]:
         lines.append(f"Messages ({len(b['messages'])}):")
         lines += [f"  {_local(m['at'])}  from {m['from']}: {_oneline(m['text'])}  [{m['id']}]"

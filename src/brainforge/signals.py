@@ -3,7 +3,9 @@
 - overdue: past its deadline and not done (plugin types with `deadline`);
 - slipping: its date moved later again and again, or by weeks; git history keeps every date it had;
 - at risk: it waits for an item (`waits_for`) that is late, due after it, without a date, or at risk itself;
-- gap: an open item without an expected field, such as an owner or a date.
+- gap: an open item without an expected field, such as an owner or a date;
+- with a project model (plan.py): the phase is complete, a step of the current phase has no item yet (next step),
+  a step is late for its phase, a step is out of order, or no phase is set.
 
 The steering procedure reads them; round issues and briefings turn them into questions for the item's owners.
 """
@@ -15,12 +17,12 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
-from brainforge import approval, gitops, okf, plugins
+from brainforge import approval, gitops, okf, plan, plugins
 from brainforge.brain import Brain, TeamMember
 
 SLIP_MOVES = 2  # ponytail: fixed thresholds; brain.yaml settings if teams want others
 SLIP_DAYS = 14
-ORDER = ("overdue", "at risk", "slipping", "gap")
+ORDER = ("phase", "overdue", "at risk", "step late", "phase complete", "next step", "slipping", "out of order", "gap")
 
 
 @dataclass
@@ -115,6 +117,13 @@ def compute(brain: Brain, today: date | None = None) -> list[Signal]:
     for i, c in open_.items():
         if gaps := plugins.gaps(brain, c, known):
             add("gap", i, f"no {', '.join(gaps)}", f"It has no {' or '.join(gaps)} yet. What should it be?")
+
+    leads = [m for m in brain.manifest.team if m.lead]
+    for kind, c, i, detail, question, items in plan.step_signals(brain, today):
+        owners: list[TeamMember] = []
+        for m in (m for x in items for m in approval.approvers(brain, x)):
+            owners += [] if m in owners else [m]
+        found.append(Signal(kind, c, i, owners or leads, detail, question))
     return sorted(found, key=lambda s: (ORDER.index(s.kind), s.id))
 
 

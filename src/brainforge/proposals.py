@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import textwrap
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -23,7 +24,7 @@ from typing import Any
 
 import yaml
 
-from brainforge import approval, briefing, gitops, ingest, okf, plugins, procedures, rounds
+from brainforge import approval, briefing, gitops, ingest, okf, plan, plugins, procedures, rounds
 from brainforge.brain import Brain, BrainError, TeamMember, slugify
 
 MAX = 7
@@ -57,23 +58,24 @@ list, most important first, at most {MAX}. Each entry is one of:
     - do: message     # a question, a chase, or an escalation to a lead
       to: <team member>
       about: <concept id it concerns, optional>
-      text: <the message in plain words; it goes out in the name of the lead who approves it>
-      why: <the facts behind it, in one sentence>
+      text: "<the message in plain words; it goes out in the name of the lead who approves it>"
+      why: "<the facts behind it, in one sentence>"
     - do: set         # one field of an item, e.g. a new date or owner
       item: <concept id>
       field: <a field of its type>
       value: <the new value>
-      why: <...>
+      why: "<...>"
     - do: create      # a new item, e.g. a risk, or a decision someone needs to take
       type: <a type below>
-      title: <title>
+      title: "<title>"
       fields: {{<field>: <value>}}
-      text: <one or two sentences>
-      why: <...>
+      text: "<one or two sentences>"
+      why: "<...>"
 
 - The team: {team}. Messages go to team members only; anything for people outside the team is a draft in the
   report, not a proposal. The leads read these proposals: for something a lead should decide, propose the
   change itself (`set`, `create`) rather than a message to a lead.
+- Put text in double quotes, as above: a colon in an unquoted value ("Agenda: …") breaks the YAML.
 - Concept ids are paths under `knowledge/` without `.md`, e.g. `milestones/go-live`.
 - Types and their fields:
 {types}
@@ -102,7 +104,7 @@ def _concept(brain: Brain, ref: Any) -> tuple[str, okf.Concept]:
 
 
 def _value(brain: Brain, name: str, f: plugins.FieldDef, value: Any) -> Any:
-    if error := plugins.field_error(name, f, value):
+    if error := plugins.field_error(name, f, value) or plan.check_value(brain, name, value):
         raise BrainError(error)
     if f.values:
         return next(v for v in f.values if v.lower() == str(value).lower())
@@ -166,21 +168,38 @@ def extract(brain: Brain, body: str) -> tuple[str, list[dict[str, Any]], list[di
     if not re.search(r"^#+[^\n]*proposals[^\n]*\s*\Z", head, re.I | re.M):
         head = head.rstrip() + "\n\n## Proposals\n\n"
     body = head + f"{START}\n{END}" + BLOCK_RE.sub("", body[last.end():])
+    rejected: list[dict[str, Any]] = []
     try:
         raw = okf.load_yaml(blocks[-1].group(1))
     except yaml.YAMLError as exc:
-        return body, [], [{"error": f"not YAML: {exc}"}]
+        raw, rejected = _entries(blocks[-1].group(1), exc)
     raw = raw.get("proposals") if isinstance(raw, dict) else raw
     if not isinstance(raw, list):
         return body, [], [{"error": "not a YAML list"}]
     valid: list[dict[str, Any]] = []
-    rejected = [{"proposal": p, "error": f"more than {MAX}"} for p in raw[MAX:]]
+    rejected += [{"proposal": p, "error": f"more than {MAX}"} for p in raw[MAX:]]
     for p in raw[:MAX]:
         try:
             valid.append({"n": len(valid) + 1, **check(brain, p), "state": "proposed"})
         except BrainError as exc:
             rejected.append({"proposal": p, "error": str(exc)})
     return body, valid, rejected
+
+
+def _entries(text: str, exc: yaml.YAMLError) -> tuple[list[Any], list[dict[str, Any]]]:
+    """The list entry by entry, when the whole isn't valid YAML: an entry that isn't costs only itself."""
+    first = re.search(r"(?m)^( *)- ", text)
+    if not first:
+        return [], [{"error": f"not YAML: {exc}"}]
+    good: list[Any] = []
+    bad: list[dict[str, Any]] = []
+    for part in re.split(rf"(?m)^(?={first.group(1)}- )", text)[1:]:
+        try:
+            x = okf.load_yaml(textwrap.dedent(part))
+            good += x if isinstance(x, list) else [x]
+        except yaml.YAMLError as e:
+            bad.append({"proposal": part.strip(), "error": f"not YAML: {e}"})
+    return good, bad
 
 
 # --- views ---------------------------------------------------------------------------------------

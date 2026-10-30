@@ -108,6 +108,7 @@ Reports tell people where things stand; steering acts on it. Code finds what nee
 | at risk | it waits for an item (the type's `waits_for` field, e.g. `depends_on: [actions/test-plan]`) that is overdue, due after it, without a date, or at risk itself |
 | slipping | its date moved later at least twice, or by 14 days or more; the first date comes from git history or the type's `baseline` field |
 | gap | an open item without an expected field, such as an owner or a date |
+| phase, next step, step late, phase complete, out of order | with a [project model](project-models.md): no phase set, a step of the current phase without an item, a step past its `within_days`, every required step done, a step of another phase open |
 
 Each signal carries a question for the item's owners. Round issues list them under each person, and the briefing shows them with an open round, so updates answer what the project needs to know ("It was due 28 Oct. Is it done, or what is the new date?").
 

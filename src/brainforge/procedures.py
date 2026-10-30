@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from cronsim import CronSim, CronSimError
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-from brainforge import agents, approval, gitops, ingest, okf, plugins, proposals, rounds, signals
+from brainforge import agents, approval, gitops, ingest, okf, plan, plugins, proposals, rounds, signals
 from brainforge.brain import AgentConfig, Brain, BrainError, Layer, blob_hash, instruction_layers, render_layers
 
 FORMATS = {"docx": ".docx", "pptx": ".pptx", "html": ".html", "pdf": ".pdf"}
@@ -260,7 +260,7 @@ def run(brain: Brain, proc: Procedure, cfg: AgentConfig, *, instruction: str | N
     ups, missing = (rounds.updates(brain, r), rounds.missing(brain, r)) if r else ([], [])
     round_text = rounds.prompt(r, ups, missing, paths=not proc.audience) if r else ""
     if proc.proposes:
-        round_text += signals.prompt(signals.compute(brain)) + proposals.prompt(brain)
+        round_text += signals.prompt(signals.compute(brain)) + plan.prompt(brain) + proposals.prompt(brain)
     props: list[dict[str, Any]] = []
     rejected: list[dict[str, Any]] = []
 

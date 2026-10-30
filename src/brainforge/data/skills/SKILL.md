@@ -21,7 +21,8 @@ description: Work with a BrainForge brain, a Git-native knowledge base in Open K
 | What needs the user (messages, rounds waiting for their update, proposals for leads, overdue and soon-due items, approvals) | `brainforge briefing` |
 | Send the user's update for a round | `brainforge note "<their update>"` |
 | Who has sent an update to the rounds | `brainforge rounds` |
-| What needs steering (overdue, at risk, slipping, gaps) | `brainforge signals` |
+| What needs steering (overdue, at risk, slipping, gaps, next steps of the project model) | `brainforge signals` |
+| Where the project stands in its model: phase, steps, what is open | `brainforge plan` |
 | Proposals waiting for a lead; the lead's decision | `brainforge proposals list`, `brainforge proposals approve 1 3` / `discard 2` (`--edit "<own words>"` for one) |
 | Leave a message for a teammate | `brainforge message send <name> "<text>" [--about <item id>]` |
 | Dismiss the user's messages | `brainforge message dismiss <id>…` |

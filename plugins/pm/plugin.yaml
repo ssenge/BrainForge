@@ -1,5 +1,5 @@
 name: pm
-version: 4
+version: 5
 description: Project management - milestones, decisions, actions, and a RAID log (risks, assumptions, issues, dependencies).
 types:
   - type: Milestone
@@ -15,6 +15,7 @@ types:
       baseline: {description: "the first planned date, kept when the date moves", format: date}
       state: {values: [planned, achieved, missed, cancelled]}
       depends_on: {description: "what has to be done first: actions, dependencies, decisions", format: ids}
+      step: {description: "the step of the project model it is, e.g. delivery/kickoff"}
   - type: Decision
     group: decisions
     description: Something that was decided or proposed for decision.
@@ -36,6 +37,7 @@ types:
       due: {format: date, expected: true}
       state: {values: [open, done, cancelled]}
       depends_on: {description: "what has to be done first", format: ids}
+      step: {description: "the step of the project model it is, e.g. delivery/requirements"}
   - type: Risk
     group: risks
     description: Something that may happen and would affect the project.
@@ -77,3 +79,4 @@ types:
     fields:
       owner: {}
       rag: {description: "overall status, only when the document states it", values: [green, amber, red]}
+      phase: {description: "the phase of the project model it is in (brain.yaml `model`), e.g. delivery"}

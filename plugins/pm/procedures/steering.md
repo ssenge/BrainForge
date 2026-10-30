@@ -1,6 +1,6 @@
 ---
 name: steering
-version: 1
+version: 2
 description: Proposals for the leads - who to ask or chase, what to replan, which risk or decision to raise.
 proposes: true
 knowledge:
@@ -28,12 +28,13 @@ Help the leads steer: from the signals, the knowledge and what changed since the
 3. Prefer asking the owner before escalating. Chase a second time, or escalate to a lead, when an item is overdue by more than a week, keeps slipping, or holds up a milestone.
 4. Propose a new date only when a document or an update states one; otherwise ask the owner for it.
 5. Raise what nobody owns: a decision that needs taking (with `decide_by`), a risk with a likely impact, a missing owner.
-6. Be specific and kind in messages: name the item, the date, and what you need from the person by when.
-7. Cite every statement in the report.
+6. If the brain follows a project model (`# Project model` below): when the current phase is complete, propose moving the project on; when a step of it has no item yet, propose creating one (its `type`, `step`, an owner and a date from `within_days`) or ask a lead who takes it. Use the model's guidance for the details, such as a kickoff's agenda.
+7. Be specific and kind in messages: name the item, the date, and what you need from the person by when.
+8. Cite every statement in the report.
 
 ## Structure
 
-- Where it stands, in three sentences
+- Where it stands, in three sentences (with a project model: the phase and the next steps)
 - What needs steering (table: item, signal, owner, since)
 - Drafts for the client, if something has to be said to them (text only; the leads send it)
 - The proposals block

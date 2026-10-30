@@ -26,6 +26,7 @@ plugins/<name>/
 ├── instructions/<activity>.md   ingestion.md, query.md, reporting.md (optional)
 ├── procedures/*.md              procedures, like the brain's own (optional)
 ├── scripts/                     commands for `brainforge plugin run` (optional)
+├── models/*.md                  project models, e.g. a company's method (optional)
 └── README.md
 ```
 
@@ -67,6 +68,7 @@ Avoid `status` as a field name: OKF uses it for the concept's lifecycle (`draft`
 | Types | For ingestion, BrainForge generates an instruction layer that lists the types, their groups and fields. After every agent run, a value outside `values` or a malformed date is an error, so the run is rolled back. `brain validate` reports the same, plus types filed in the wrong group. |
 | `instructions/<activity>.md` | An instruction layer after the framework defaults and before the brain's own `instructions.md`, so a brain can refine what a plugin says. The framework policy always comes first and can't be overridden. |
 | `procedures/*.md` | Listed and run like the brain's own (`brainforge run status-report`). A procedure in the brain's `procedures/` with the same name replaces the plugin's. |
+| `models/*.md` | [Project models](project-models.md): phases and steps a project follows. A brain follows one with `model: <plugin>/<model>` in `brain.yaml`. A plugin can be only that: a company's method in its own repository. |
 | `scripts/` | Run only by `brainforge plugin run <plugin> <script> [args…]`, in the brain root. A `.py` script runs with BrainForge's Python, so it can `import brainforge`; anything else must be executable. Exit codes pass through. |
 
 ## Trust

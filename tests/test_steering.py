@@ -164,6 +164,9 @@ def test_set_carries_out_and_validation(project, monkeypatch):
           "---\nx\n")
     issues = [i.message for i in procedures.load_all(project)[1]]
     assert any("set `lead: true`" in m for m in issues) and any("drop `audience`" in m for m in issues)
+    _, ok, bad = proposals.extract(project, "```proposals\n- do: message\n  to: Bob\n  text: Agenda: goals\n  why: x\n"
+                                   "- do: message\n  to: Bob\n  text: \"Fine: thanks\"\n  why: y\n```\n")
+    assert [p["text"] for p in ok] == ["Fine: thanks"] and bad[0]["error"].startswith("not YAML")  # costs only itself
     assert proposals.parse("approve 1 3\n> approve 9\ndiscard 2\n`approve 4: Next Friday`") == [
         ("approve", [1, 3], None), ("discard", [2], None), ("approve", [4], "Next Friday")]
 

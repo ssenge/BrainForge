@@ -32,6 +32,7 @@ Run all three checks before you commit. They are all clean on `main`.
 | `src/brainforge/procedures.py` | Markdown procedures → reports (pandoc for DOCX/PPTX/HTML/PDF) |
 | `src/brainforge/schedule.py` | `schedule tick`, plus generators for cron entries and GitHub workflows |
 | `src/brainforge/rounds.py` | Rounds (asynchronous status meetings): windows from procedure crons, updates per round, the round page, round issues via `gh` |
+| `src/brainforge/plan.py` | Project models (`models/*.md` in a plugin or the brain, `model:` in brain.yaml): phases and steps, the position from `phase`/`step` and git, step signals, the steering block |
 | `src/brainforge/signals.py` | Signals found by code: overdue, at risk (via `waits_for`), slipping (git history of the deadline), gaps |
 | `src/brainforge/proposals.py` | Proposals of a `proposes: true` procedure: the closed set (message, set, create), checks, the lead's decision carried out, proposal issues via `gh` |
 | `src/brainforge/briefing.py` | Deadlines from plugin types, messages (`messages/<member>/`), overdue notices, the briefing, the iCalendar export |

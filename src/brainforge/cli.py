@@ -24,6 +24,7 @@ from brainforge import (
     integrations,
     okf,
     parsers,
+    plan,
     plugins,
     procedures,
     proposals,
@@ -148,6 +149,7 @@ def brain_validate() -> None:
     known = plugins.types(b)
     issues += [i for p in okf.concept_files(b.knowledge) for i in plugins.check(b, p, known)]
     issues += [okf.Issue("warning", b.rel(p), "sidecar without a matching document") for p in ingest.inbox_documents(b)[1]]
+    issues += plan.check(b)
     levels = b.manifest.audiences
     issues += [okf.Issue("error", b.rel(c.path), f"audience '{c.meta['audience']}' is not one of {levels}")
                for c in okf.read_all(b.knowledge) if levels and "audience" in c.meta and c.meta["audience"] not in levels]
@@ -539,6 +541,17 @@ def rounds_cmd() -> None:
     emit(data, "\n".join(lines) or "No rounds: add `round:` to a scheduled procedure (docs/procedures.md).")
 
 
+@app.command("plan")
+def plan_cmd() -> None:
+    """Where the project stands in its model (brain.yaml `model`): phases, steps, what is open."""
+    b = current()
+    pos = plan.position(b)
+    if pos is None:
+        emit(None, "No project model: set `model:` in brain.yaml (docs/project-models.md).")
+        return
+    emit(pos.as_dict(b), plan.text(b, pos))
+
+
 @app.command("signals")
 def signals_cmd(
     for_: Annotated[str | None, typer.Option("--for", help="Only this team member's items.")] = None,
@@ -814,7 +827,8 @@ def plugin_add(source: Annotated[str, typer.Argument(
     p = plugins.add(b, source)
     parts = [f"types: {', '.join(t.type for t in p.types)}" if p.types else "",
              f"procedures: {', '.join(f.stem for f in p.files('procedures', '*.md'))}" if p.files("procedures") else "",
-             f"scripts: {', '.join(f.stem for f in p.files('scripts'))}" if p.files("scripts") else ""]
+             f"scripts: {', '.join(f.stem for f in p.files('scripts'))}" if p.files("scripts") else "",
+             f"models: {', '.join(f'{p.name}/{f.stem}' for f in p.files('models', '*.md'))}" if p.files("models") else ""]
     emit({"plugin": p.name, "version": p.version, "path": b.rel(p.path)},
          f"Added plugin {p.name} v{p.version} in {b.rel(p.path)}/ ({'; '.join(x for x in parts if x)}).\n"
          f"Commit it: git add plugins && git commit -m \"plugin: {p.name}\"")

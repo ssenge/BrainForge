@@ -31,6 +31,7 @@ BrainForge turns documents into a structured, versioned knowledge base, called a
 | **Human in the loop, decentralized** | Everything the agent extracts arrives as *pending*. Each team member approves or discards their own items, routed by owner, from their own machine; a scanner shows who still has to act before a report. Every decision is a commit by the person who made it. |
 | **Asynchronous status meetings** | A round collects updates instead of a meeting: people send a note, a file or a reply on the round's GitHub issue while it is open, each confirms what the brain took from theirs, and the report closes the round. Several rounds can run at once. See [Rounds](#rounds-asynchronous-status-meetings). |
 | **Active steering** | Code finds what needs a person (overdue, at risk through a late dependency, slipping again and again, no owner or date) from the brain and its git history. A steering report proposes what to do: ask or chase someone, set a new date or owner, raise a risk or a decision. A lead approves with one line, and BrainForge carries it out. See [Steering](#steering-signals-and-proposals). |
+| **Project models** | Your method as a file: phases and steps, such as sales → delivery (kickoff within 10 days) → closure. BrainForge knows where the project stands and proposes the next steps. Each company brings its own from a repository. See [Project models](#project-models). |
 | **Audiences** | Each brain defines its own audiences, such as `client` / `internal`. A report for an audience sees only approved knowledge meant for it, enforced by code rather than by prompt. |
 | **Plugins** | The core is domain-neutral. Plugins add types with checked fields, instructions, reports and scripts for a domain. The bundled `pm` plugin covers project management: milestones, decisions, actions and a RAID log. See [docs/plugins.md](docs/plugins.md). |
 | **Agent skills and MCP** | One command installs a Claude Code or Codex skill, and `brainforge mcp` serves brains to Claude Desktop or any MCP client, read-only unless you let it record your approvals. See [Ask your brain](#ask-your-brain-from-claude-desktop-or-any-agent). |
@@ -472,6 +473,25 @@ Reports say where a project stands. Steering acts on it: code finds what needs a
 
 Nobody outside the team is messaged: what the client should hear is a draft in the report. Details: [docs/procedures.md](docs/procedures.md#steering-signals-and-proposals), [docs/automation.md](docs/automation.md#proposals-on-github), [docs/security.md](docs/security.md#steering).
 
+### Project models
+
+A project model is your method as a Markdown file: the phases, the steps in each, and guidance such as what a kickoff covers. With `model:` in `brain.yaml`, BrainForge knows where the project stands, from `phase` on the project item and the items tagged with `step:`, and steering proposes what comes next.
+
+```bash
+brainforge plugin add https://github.com/acme/acme-method.git   # your company's models, versioned with the brain
+# brain.yaml: model: acme-method/fixed-price   (or pm/client-project, the bundled demo)
+brainforge plan
+```
+
+```
+Website relaunch · pm/client-project v1 · phase delivery since 2026-10-28
+  sales     done
+  delivery  kickoff open (Bob Lee, due 2026-11-07) · requirements not started · status-reporting not started (optional) · acceptance not started
+  closure   not started
+```
+
+New signals follow: a step of the current phase without an item (*next step*), a step past its `within_days` (*step late*), a phase whose steps are all done (*phase complete*). Steering turns them into proposals: create the kickoff for Bob by 7 Nov, move the project on to closure. A lead approves, as with every proposal. Details: [docs/project-models.md](docs/project-models.md).
+
 ## Agents and authentication
 
 BrainForge never touches credentials; it runs the agent CLI, which logs itself in.
@@ -507,7 +527,8 @@ With `adapter: command`, any program works. It receives the prompt on stdin, run
 | `note TEXT` | Ingest a typed note (a correction, a fact from a call) as a source by you; `-` reads stdin |
 | `briefing` | What needs you: messages, rounds waiting for your update (with questions about your items), proposals for leads, overdue and soon-due items, approvals (`--for NAME`; `--hook` for an agent's session start) |
 | `rounds` | The latest round of each procedure: open or closed, who has sent an update, who hasn't |
-| `signals` | What needs steering, found by code: overdue, at risk, slipping, gaps (`--for NAME`) |
+| `signals` | What needs steering, found by code: overdue, at risk, slipping, gaps, and the project model's next steps (`--for NAME`) |
+| `plan` | Where the project stands in its model (`model:` in `brain.yaml`): phases, steps, what is open |
 | `proposals list`, `proposals approve N…`, `proposals discard N…` | Proposals of a steering report; leads approve (`--edit TEXT`, `--procedure NAME`, `--push`) or discard |
 | `message send TO TEXT`, `message dismiss ID…` | Messages for team members, stored in the brain repository and readable by everyone with access (`--about ITEM`, `--all`, `--push`) |
 | `calendar` | Open deadlines as an iCalendar file (`--all`, `--for NAME`, `-o FILE`) |
@@ -648,6 +669,7 @@ Further out:
 - [Knowledge profile](docs/knowledge-profile.md): how BrainForge uses OKF.
 - [Brain manifest](docs/brain-manifest.md)
 - [Procedures and reports](docs/procedures.md)
+- [Project models](docs/project-models.md)
 - [Plugins](docs/plugins.md), and the bundled [pm plugin](plugins/pm/README.md)
 - [Automation: GitHub Actions and cron](docs/automation.md)
 - [Security model](docs/security.md)

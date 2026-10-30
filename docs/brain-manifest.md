@@ -23,6 +23,7 @@ team:                            # optional: who approves what (see below)
   - name: Bob Lee
     approves: [{type: Risk}]     # also approves unowned items matching these rules
 needs_approval: [{type: Decision}, {type: Action Item}]   # optional: default is everything
+model: pm/client-project         # optional: the project model the brain follows (<plugin>/<model> or <model>)
 # parent: / children:            # reserved for Phase B (federation); rejected for now
 ```
 
@@ -36,5 +37,6 @@ needs_approval: [{type: Decision}, {type: Action Item}]   # optional: default is
 - **Team and routing:** an item's approvers are the team members named in its `owner` field (by name, email or alias). An item without such an owner goes to the first member whose `approves` rules match. A rule maps frontmatter keys to case-insensitive globs, so `{type: "*"}` makes a catch-all and `{tags: "*security*"}` routes by tag. Order the list from specific to catch-all. Without a team, everyone sees every pending item.
 - **`github`** lets the `brainforge-approvals` workflow @mention the person and accept their issue comments as their decisions (see the README, "Approving from GitHub").
 - **`lead`** marks the people who steer: proposals from a procedure with `proposes: true` wait for them, and any one of them can approve or discard ([procedures.md](procedures.md#steering-signals-and-proposals)). Name more than one, so nothing waits for a single person.
+- **`model`** names the [project model](project-models.md) the project follows: its phases and steps. `brainforge plan` shows where it stands, and steering proposes the next steps.
 - **`needs_approval`** limits approval to items matching these rules. Everything else is accepted as the agent wrote it, but its audience still defaults to the narrowest one.
 - A brain is found by walking up from the current directory to the nearest `brain.yaml`. You can also set it with `--brain` or `BRAINFORGE_BRAIN`.
