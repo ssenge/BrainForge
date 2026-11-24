@@ -14,7 +14,6 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import textwrap
 from collections.abc import Callable
@@ -232,7 +231,7 @@ def lines(brain: Brain, props: list[dict[str, Any]], link: Callable[[str], str])
 
 def block(brain: Brain, report: Path, props: list[dict[str, Any]]) -> str:
     def link(cid: str) -> str:
-        return os.path.relpath(brain.knowledge / f"{cid}.md", report.parent)
+        return okf.relpath(brain.knowledge / f"{cid}.md", report.parent)
     return "\n".join([START, *lines(brain, props, link), END])
 
 

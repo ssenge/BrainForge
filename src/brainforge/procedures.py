@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import shutil
 import subprocess
 from datetime import UTC, datetime
@@ -198,7 +197,7 @@ def render(brain: Brain, md: Path, fmt: str, template: str | None) -> Path:
 
 def build_prompt(brain: Brain, proc: Procedure, layers: list[Layer], report_rel: str,
                  previous: Path | None, changed: list[str] | None, round_text: str = "") -> str:
-    prefix = os.path.relpath(brain.knowledge, (brain.root / report_rel).parent)
+    prefix = okf.relpath(brain.knowledge, (brain.root / report_rel).parent)
     prev = f"`{brain.rel(previous)}`" if previous else "none (this is the first report)"
     if changed is None:
         delta = "No previous report: consider all knowledge."
@@ -293,8 +292,8 @@ def run(brain: Brain, proc: Procedure, cfg: AgentConfig, *, instruction: str | N
             cited = sorted({t for t in okf.links(concept, brain.knowledge) if t.is_relative_to(bundle) and t.suffix == ".md"})
             if allowed is not None and (leaked := [brain.rel(t) for t in cited if t.exists() and brain.rel(t) not in allowed]):
                 raise ProcedureError(f"report for audience '{proc.audience}' cites knowledge it may not see: {', '.join(leaked)}")
-            broken = [os.path.relpath(t, report.parent) for t in cited if not t.exists()]
-            sources = [{"resource": os.path.relpath(t, report.parent)} for t in cited if t.exists()]
+            broken = [okf.relpath(t, report.parent) for t in cited if not t.exists()]
+            sources = [{"resource": okf.relpath(t, report.parent)} for t in cited if t.exists()]
             meta = {
                 "type": "Report",
                 "title": f"{proc.name} {date}",

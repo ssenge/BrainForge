@@ -3,10 +3,15 @@
 from __future__ import annotations
 
 import contextlib
-import fcntl
 import subprocess
+import sys
 from collections.abc import Callable, Iterator
 from pathlib import Path
+
+if sys.platform == "win32":
+    import msvcrt
+else:
+    import fcntl
 
 
 class GitError(Exception):
@@ -177,11 +182,15 @@ def user(root: Path) -> str:
 
 @contextlib.contextmanager
 def lock(root: Path) -> Iterator[None]:
-    """Exclusive per-repo lock so two local BrainForge runs can't write at once."""
+    """Exclusive per-repo lock so two local BrainForge runs can't write at once. Closing `fh` (at the end
+    of the `with`) releases the lock on both platforms, so there's nothing to unlock explicitly."""
     git_dir = Path(git(root, "rev-parse", "--absolute-git-dir").strip())
-    with open(git_dir / "brainforge.lock", "w") as fh:
+    with open(git_dir / "brainforge.lock", "a") as fh:
         try:
-            fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
+            if sys.platform == "win32":
+                msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except (BlockingIOError, PermissionError):
             raise GitError("another BrainForge run holds the lock on this repository") from None
         yield

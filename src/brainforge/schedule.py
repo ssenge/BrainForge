@@ -72,6 +72,9 @@ def cron_line(brain: Brain) -> str:
 
 def install_cron(brain: Brain) -> str:
     """Add (or replace) one crontab entry for this brain that calls `schedule tick` every 15 minutes."""
+    if sys.platform == "win32":
+        raise BrainError("provider 'cron' needs crontab, which Windows doesn't have; "
+                          "use --provider github-actions instead")
     line = cron_line(brain)
     (brain.root / ".brainforge").mkdir(exist_ok=True)
     current = subprocess.run(["crontab", "-l"], capture_output=True, text=True)

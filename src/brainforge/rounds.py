@@ -13,7 +13,6 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import shutil
 import subprocess
@@ -142,7 +141,7 @@ def page(brain: Brain, r: Round) -> str:
     lines = [f"# Round {r.id}", "",
              f"Updates for the `{r.proc.name}` report, open from {_when(r.opened, r.tz)} until "
              f"{_when(r.closes, r.tz)} ({r.proc.schedule.timezone if r.proc.schedule else 'UTC'}).",
-             *([f"Report: [{brain.rel(report)}]({os.path.relpath(report, here)})"] if report else []), "",
+             *([f"Report: [{brain.rel(report)}]({okf.relpath(report, here)})"] if report else []), "",
              "| Who | Sent | Update |", "|---|---|---|"]
     def cell(s: str) -> str:
         return " ".join(s.split()).replace("|", "\\|")
@@ -150,7 +149,7 @@ def page(brain: Brain, r: Round) -> str:
     for m in r.members:
         mine = [u for u in ups if u.sender == m.name]
         lines += [f"| {m.name} | {u.sent.astimezone(r.tz):%a %d %b %H:%M} | [{cell(u.title)}]"
-                  f"({os.path.relpath(brain.root / u.rel, here)})" + (f": {cell(u.description)}" if u.description else "")
+                  f"({okf.relpath(brain.root / u.rel, here)})" + (f": {cell(u.description)}" if u.description else "")
                   + " |" for u in mine]
         if not mine:
             lines.append(f"| {m.name} | | {'no update' if report else 'not yet'} |")

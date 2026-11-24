@@ -1,5 +1,7 @@
 """Slice 2: OKF parsing, validation, index/log generation, search."""
 
+from pathlib import PureWindowsPath
+
 from conftest import write
 
 from brainforge import okf
@@ -106,3 +108,15 @@ def test_graph_issues_find_isolated_concepts_and_likely_duplicates(tmp_path):
     found = sorted((i.path, i.message.split(":")[0]) for i in okf.graph_issues(k))
     assert found == [("entities/b.md", "same title as topics/a.md"), ("topics/a.md", "same title as entities/b.md"),
                      ("topics/lonely.md", "isolated")]
+
+
+def test_relpath_is_always_forward_slash(tmp_path):
+    root = tmp_path / "brain"
+    assert okf.relpath(root / "knowledge" / "x.md", root / "reports" / "status") == "../../knowledge/x.md"
+
+
+def test_relpath_normalizes_backslashes_on_windows(monkeypatch, tmp_path):
+    """On win32, os.path.relpath and Path both use backslash; relpath() must still read forward-slash."""
+    monkeypatch.setattr(okf, "Path", PureWindowsPath)
+    monkeypatch.setattr(okf.os.path, "relpath", lambda path, start: "..\\..\\knowledge\\x.md")
+    assert okf.relpath(tmp_path / "a", tmp_path / "b") == "../../knowledge/x.md"

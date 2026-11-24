@@ -1,3 +1,6 @@
+# Normalize line endings: Windows contributors get CRLF in their working tree, everyone else LF,
+# and git stores LF either way, so cross-platform clones don't churn every file on first touch.
+* text=auto eol=lf
 # BrainForge writes log entries on several branches; union merge never conflicts.
 knowledge/log.md merge=union
 # Large binaries: consider Git LFS, e.g.

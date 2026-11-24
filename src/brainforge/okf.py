@@ -6,6 +6,7 @@ BrainForge profile on top of it: docs/knowledge-profile.md
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -143,6 +144,12 @@ def read_all(bundle: Path) -> list[Concept]:
 
 def concept_id(bundle: Path, path: Path) -> str:
     return path.relative_to(bundle).with_suffix("").as_posix()
+
+
+def relpath(path: Path, start: Path) -> str:
+    """Like `os.path.relpath`, but forward-slash: `path` and `start` don't share a root (`relative_to` can't
+    do `..`), yet OKF links must still read the same on every platform."""
+    return Path(os.path.relpath(path, start)).as_posix()
 
 
 def links(concept: Concept, bundle: Path) -> list[Path]:

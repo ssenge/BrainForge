@@ -14,6 +14,7 @@ dependencies = [
     "python-pptx>=1.0",
     "cronsim>=2.6",
     "mcp>=1.9",
+    "tzdata>=2024.1; sys_platform == 'win32'",  # Windows has no system IANA tz database for zoneinfo
 ]
 
 [project.scripts]
